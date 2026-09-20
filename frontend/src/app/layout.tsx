@@ -34,7 +34,12 @@ export const metadata: Metadata = {
     description:
       "Save 10% on two or more services and enter the daily lucky slot campaign.",
   },
-  robots: { index: true, follow: true },
+  // Mirrors robots.ts: a preview build carries a page-level noindex too, since
+  // a crawler that reached a URL directly would never see robots.txt.
+  robots:
+    process.env.NEXT_PUBLIC_NOINDEX === "1"
+      ? { index: false, follow: false }
+      : { index: true, follow: true },
 };
 
 export const viewport: Viewport = {

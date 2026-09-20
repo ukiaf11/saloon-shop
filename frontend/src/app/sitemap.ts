@@ -1,5 +1,10 @@
 import type { MetadataRoute } from "next";
 
+// Required by `output: "export"` (the GitHub Pages build): without it Next
+// treats this route handler as dynamic and refuses to export. Harmless for the
+// standalone build, where the contents are static anyway.
+export const dynamic = "force-static";
+
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 export default function sitemap(): MetadataRoute.Sitemap {

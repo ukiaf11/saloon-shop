@@ -1,0 +1,112 @@
+name: Deploy preview to GitHub Pages
+
+# The fallback host when no application server is available.
+#
+# READ THIS BEFORE RELYING ON IT: GitHub Pages serves static files only. It
+# cannot run Node or Django, so this deployment is a preview of the marketing
+# page, NOT the product. Specifically:
+#
+#   * There is no Django API behind it. Services, hours, testimonials and FAQs
+#     are whatever the API returned when the workflow ran, frozen into the HTML.
+#     With no reachable API they render as empty sections.
+#   * Checkout, payment, the lucky campaign, coupons and the admin panel cannot
+#     work here at all -- they need a server and a database.
+#   * On-demand revalidation does not exist. Content updates only when this
+#     workflow runs again.
+#   * next/image optimization is off, so images ship at their original size.
+#
+# It is deliberately noindex by default (see the NEXT_PUBLIC_NOINDEX var below)
+# so a preview that cannot take a booking never outranks the real site.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two Pages deploys race; let an in-flight one finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Resolve Pages base path
+        id: base
+        run: |
+          # A project page is served from /<repo>; a <user>.github.io page from
+          # the root. Getting this wrong breaks every asset URL.
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          if [ "$REPO_NAME" = "${OWNER}.github.io" ]; then
+            echo "base_path=" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://${OWNER}.github.io" >> "$GITHUB_OUTPUT"
+          else
+            echo "base_path=/${REPO_NAME}" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://${OWNER}.github.io/${REPO_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report what this build can reach
+        run: |
+          if [ -n "${{ vars.PUBLIC_API_BASE_URL }}" ]; then
+            echo "API set to ${{ vars.PUBLIC_API_BASE_URL }} - live content will be baked in."
+          else
+            echo "::warning::No PUBLIC_API_BASE_URL repository variable set. The site will"
+            echo "::warning::build with empty Services/Gallery/Testimonials/FAQ sections."
+            echo "::warning::Set it under Settings > Secrets and variables > Actions > Variables"
+            echo "::warning::to a publicly reachable Django API, e.g. https://api.example.com/api/v1"
+          fi
+
+      - name: Build static export
+        env:
+          NEXT_OUTPUT_EXPORT: "1"
+          NEXT_BASE_PATH: ${{ steps.base.outputs.base_path }}
+          NEXT_PUBLIC_SITE_URL: ${{ steps.base.outputs.site_url }}
+          # Point at a live API if one exists; otherwise the readers degrade to
+          # empty sections rather than failing the build.
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL }}
+          NEXT_PUBLIC_MEDIA_HOSTNAME: ${{ vars.PUBLIC_MEDIA_HOSTNAME }}
+          # Set the PAGES_ALLOW_INDEXING variable to "1" only once this really
+          # is the production site and checkout works.
+          NEXT_PUBLIC_NOINDEX: ${{ vars.PAGES_ALLOW_INDEXING == '1' && '0' || '1' }}
+        run: npm run build
+
+      - name: Disable Jekyll processing
+        # Without this, Pages' Jekyll step drops every _next/ directory.
+        run: touch out/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
