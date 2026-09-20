@@ -82,9 +82,11 @@ jobs:
           NEXT_OUTPUT_EXPORT: "1"
           NEXT_BASE_PATH: ${{ steps.base.outputs.base_path }}
           NEXT_PUBLIC_SITE_URL: ${{ steps.base.outputs.site_url }}
-          # Point at a live API if one exists; otherwise the readers degrade to
-          # empty sections rather than failing the build.
-          NEXT_PUBLIC_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL }}
+          # Point at a live API if one exists; otherwise the readers time out
+          # quickly and degrade to empty sections rather than failing the build.
+          # Deliberately left unset when the variable is empty: an empty string
+          # is not the same as absent, and would make request URLs relative.
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL || 'http://127.0.0.1:9/api/v1' }}
           NEXT_PUBLIC_MEDIA_HOSTNAME: ${{ vars.PUBLIC_MEDIA_HOSTNAME }}
           # Set the PAGES_ALLOW_INDEXING variable to "1" only once this really
           # is the production site and checkout works.

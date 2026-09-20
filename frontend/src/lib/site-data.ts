@@ -80,6 +80,13 @@ function describeFailure(error: unknown): string {
 /** Backstop window. On-demand `revalidateTag` is the primary mechanism. */
 const REVALIDATE_SECONDS = 300;
 
+/**
+ * Shorter than the client default. These run during a build, where an
+ * unreachable API should degrade to an empty section in seconds rather than
+ * holding the whole build hostage.
+ */
+const READ_TIMEOUT_MS = 6_000;
+
 async function readPublic<T>(
   path: string,
   schema: z.ZodType<T>,
@@ -88,6 +95,7 @@ async function readPublic<T>(
   try {
     return await apiRequest(path, schema, {
       credentials: "omit",
+      timeoutMs: READ_TIMEOUT_MS,
       next: { revalidate: REVALIDATE_SECONDS, tags: [tag] },
     });
   } catch (error) {
@@ -144,6 +152,7 @@ export async function getLegalPage(slug: LegalPageSlug): Promise<LegalPage | nul
   try {
     return await apiRequest(`/legal/${slug}`, legalPageSchema, {
       credentials: "omit",
+      timeoutMs: READ_TIMEOUT_MS,
       next: { revalidate: REVALIDATE_SECONDS, tags: [CACHE_TAGS.legal, `legal:${slug}`] },
     });
   } catch (error) {

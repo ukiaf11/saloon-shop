@@ -12,8 +12,21 @@
 
 import { z } from "zod";
 
+/**
+ * `??` is wrong here: a CI job that passes an unset repository variable sets
+ * the value to an empty string, not undefined, which would make every request
+ * URL relative and hang the build. Treat blank as unset.
+ */
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://localhost:8000/api/v1";
+
+/**
+ * No request may hang indefinitely. A static export fetches at build time, and
+ * an unreachable API without this stalls the build until the framework's own
+ * 60s-per-page timeout fires on every retry, turning a degraded build into a
+ * failed one.
+ */
+export const DEFAULT_TIMEOUT_MS = 10_000;
 
 export const apiErrorSchema = z.object({
   error: z.object({
@@ -54,6 +67,8 @@ type RequestOptions = {
    */
   next?: { revalidate?: number | false; tags?: string[] };
   cache?: RequestCache;
+  /** Abort after this many ms. Defaults to DEFAULT_TIMEOUT_MS. */
+  timeoutMs?: number;
   /**
    * Cookies are required for admin session auth, which is cross-origin, so
    * "include" stays the default. Public read endpoints pass "omit": they are
@@ -73,18 +88,25 @@ export async function apiRequest<T>(
     next,
     cache,
     credentials = "include",
+    timeoutMs = DEFAULT_TIMEOUT_MS,
   }: RequestOptions = {},
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (csrfToken) headers["X-CSRFToken"] = csrfToken;
 
+  // Combine the caller's signal with the timeout so either can abort.
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const effectiveSignal = signal
+    ? AbortSignal.any([signal, timeoutSignal])
+    : timeoutSignal;
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials,
-    signal,
+    signal: effectiveSignal,
     ...(next ? { next } : {}),
     ...(cache ? { cache } : {}),
   });
