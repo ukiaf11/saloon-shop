@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.hypothesis/
+.ruff_cache/
+.env
+.env.*
+!.env.example
+media/
+staticfiles/
+htmlcov/
+.coverage
