@@ -1,5 +1,9 @@
 # Salon Lucky Customer Platform
 
+[![CI](https://github.com/ukiaf11/saloon-shop/actions/workflows/ci.yml/badge.svg)](https://github.com/ukiaf11/saloon-shop/actions/workflows/ci.yml)
+[![Images](https://github.com/ukiaf11/saloon-shop/actions/workflows/cd-images.yml/badge.svg)](https://github.com/ukiaf11/saloon-shop/actions/workflows/cd-images.yml)
+[![Pages](https://github.com/ukiaf11/saloon-shop/actions/workflows/pages.yml/badge.svg)](https://github.com/ukiaf11/saloon-shop/actions/workflows/pages.yml)
+
 Mobile-first salon website with a daily lucky-slot campaign, online payment, QR
 coupons and a role-based admin panel.
 
@@ -87,6 +91,54 @@ builds.
 
 Response shapes are fixed by [API_CONTRACT_PHASE2.md](API_CONTRACT_PHASE2.md); the
 backend serializers and the frontend Zod schemas both answer to it.
+
+## Deployment
+
+Two paths, and they are **not** equivalent.
+
+### Container images (the real one)
+
+`cd-images.yml` builds both production images on every push to `main` and pushes
+them to GHCR:
+
+```
+ghcr.io/ukiaf11/saloon-shop/backend:latest
+ghcr.io/ukiaf11/saloon-shop/frontend:latest
+```
+
+Also tagged by commit SHA, so a deploy can pin an exact build. The backend image
+is smoke-tested with `manage.py check --deploy` before it is considered good.
+Any host that runs containers can pull these. There is no deploy job yet because
+there is no server yet — add one when there is.
+
+### GitHub Pages (the fallback preview)
+
+`pages.yml` publishes a **static export** to
+<https://ukiaf11.github.io/saloon-shop/>.
+
+Be precise about what this is. GitHub Pages serves static files; it cannot run
+Node or Django. So the Pages site is a preview of the marketing page, not the
+product:
+
+| | Container deploy | GitHub Pages |
+|---|---|---|
+| Django API | yes | **no** |
+| Services / hours / FAQs | live | frozen at build time, empty if no API was reachable |
+| Checkout, payment, coupons, admin | yes | **cannot work** |
+| On-demand revalidation (`revalidateTag`) | yes | no — content updates only when the workflow reruns |
+| `next/image` optimization | yes | no — original bytes are shipped |
+| Security headers from `next.config.ts` | yes | no — Pages sends its own |
+
+It is **noindex by default**, so a site that cannot take a booking never
+outranks the real one.
+
+Optional repository variables (Settings → Secrets and variables → Actions → Variables):
+
+| Variable | Effect |
+|---|---|
+| `PUBLIC_API_BASE_URL` | Point the Pages build at a publicly reachable API so real content is baked in. Unset ⇒ empty sections. |
+| `PUBLIC_MEDIA_HOSTNAME` | Object-storage hostname, allowlisted for `next/image`. |
+| `PAGES_ALLOW_INDEXING` | Set to `1` only once Pages really is production and checkout works. |
 
 ## Things to know before changing code
 

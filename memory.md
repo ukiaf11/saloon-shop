@@ -3,7 +3,7 @@
 > Working memory for this project. Read this first at the start of a session; update it at the end of one.
 > Keep it short and current — it is a state file, not a log archive. Details live in the docs it points to.
 
-**Last updated:** 2026-09-20 (Phase 2 complete)
+**Last updated:** 2026-09-20 (Phase 2 complete; repo live, CI/CD green)
 
 ---
 
@@ -22,7 +22,8 @@ The hard requirement underneath all of it: **every money and promotion decision 
 | | |
 |---|---|
 | **Phase** | ✅ Phase 1 (foundation) and ✅ Phase 2 (catalog & content) complete. Phase 3 (quote & order engine) is next. |
-| **Code** | `backend/` (Django 5 + DRF, uv-managed) and `frontend/` (Next 16, TS, Tailwind 4) both boot, migrate and pass their checks. Git repo initialised on `main`; nothing committed yet. |
+| **Code** | `backend/` (Django 5 + DRF, uv-managed) and `frontend/` (Next 16, TS, Tailwind 4) both boot, migrate and pass their checks. |
+| **Repo** | <https://github.com/ukiaf11/saloon-shop> (**public**), branch `main`. CI, container images and Pages all green. |
 | **Specs** | Three source documents (see §3). |
 | **Derived docs** | `REQUIREMENTS.md`, `IMPLEMENTATION_PLAN.md`, `README.md`. |
 | **Engineering blockers** | None until Phase 4 (needs the wording decision) and Phase 5 (needs Razorpay keys). |
@@ -249,7 +250,53 @@ Exit gate: a forged client price must produce an order at the correct server pri
 
 **External — unblock Phase 5:** Razorpay onboarding, test keys, webhook URL.
 
-**Housekeeping:** the repo is **not** a git repo — the user will supply GitHub
-credentials and ask for that work explicitly. Do not `git init`, commit or push
-until then. When that happens, run `pre-commit install` first so gitleaks guards
-history from the very first commit.
+**Housekeeping:** `pre-commit install` has not been run locally yet — do it so
+gitleaks guards commits before they leave the machine (CI scans too, but that is
+after the fact).
+
+## 12. Repo, CI and deployment
+
+**Repo:** <https://github.com/ukiaf11/saloon-shop>, public, `main`.
+
+Pushes use an ephemeral credential helper, never a token in the remote URL or
+`.git/config`:
+
+```bash
+export GH_USER=ukiaf11 GH_TOKEN=<pat>
+git -c credential.helper='!f() { echo "username=$GH_USER"; echo "password=$GH_TOKEN"; }; f' push origin main
+```
+
+**Before every push:** stage, then scan the staged *content* for real secret
+values, not just filenames. `.env`, `backend/.env` and `frontend/.env.local` all
+hold live secrets and are gitignored; `.env.example` templates are committed and
+must stay valueless.
+
+**Three workflows:**
+
+| Workflow | Trigger | Does |
+|---|---|---|
+| `ci.yml` | PR + `main` | ruff/format/migration-check/pytest (Postgres+Redis services), eslint/tsc/prettier/vitest/build, gitleaks + pip-audit + npm audit, Docker builds |
+| `cd-images.yml` | `main`, tags | Builds both prod images to GHCR tagged `latest`/`main`/`sha-…`; smoke-tests the backend with `check --deploy` |
+| `pages.yml` | `main` | Static export to <https://ukiaf11.github.io/saloon-shop/> |
+
+**The Pages deploy is a preview, not the product.** Pages runs no Node and no
+Django, so: no API behind it, content frozen at build time (empty if no API was
+reachable), no `revalidateTag`, no image optimizer, no `next.config.ts` headers,
+and checkout/campaign/coupons/admin cannot work at all. It is **noindex by
+default** so a site that cannot take a booking never outranks the real one.
+Repo variables `PUBLIC_API_BASE_URL`, `PUBLIC_MEDIA_HOSTNAME` and
+`PAGES_ALLOW_INDEXING` control that.
+
+**Two bugs the first Pages run exposed, both fixed and worth remembering:**
+
+- `API_BASE_URL` used `??`, but an unset GitHub Actions variable arrives as an
+  empty string, not `undefined`, so the localhost fallback never fired and every
+  request URL went relative. Blank now counts as unset.
+- The site-data readers are documented to degrade when the API is down, but had
+  no timeout, so they could not — they hung until the framework's 60s per-page
+  build timeout fired on every retry. `apiRequest` now takes `timeoutMs`
+  (10s default, 6s for build-time reads), combined with any caller signal.
+
+**Static export requires** `export const dynamic = "force-static"` on
+`robots.ts` and `sitemap.ts`, `images.unoptimized`, `trailingSlash`, and a
+`basePath` of `/<repo>` for a project page.
