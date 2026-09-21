@@ -619,7 +619,18 @@ QR upload, pay step on a phone, claim, confirm, a forced win, the customer
 seeing the result by polling, refund sent, and the booking page reached from
 localStorage.
 
+**Verified on production (2026-09-22, fd47678):** all 6 migrations applied
+to Neon at build time. The real owner signed in at `/admin` on a phone-sized
+browser, uploaded a test QR (served as a re-encoded PNG with an immutable URL),
+then **removed it within seconds**. Production is back to `unavailable`, and
+no orders were created. 11/11 checks. The audit log keeps those test changes,
+by design.
+
 **Traps hit:**
+- **Vercel refuses function request bodies over 4.5 MB** before Django sees
+  them, as a bare 413. QR uploads are capped at 4 MB on both sides for that
+  reason. Any future upload must stay under it, or go straight to object
+  storage.
 - React 19's lint (`react-hooks/set-state-in-effect`) rejects calling a loader
   from an effect, even when its setState comes after an `await`. The fix
   pattern is `.then()` inside the effect, a reload counter, results keyed by
