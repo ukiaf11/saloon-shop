@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 
+import { SelectionCart } from "@/components/cart/selection-cart";
 import { Footer } from "@/components/layout/footer";
 import { Navbar } from "@/components/layout/navbar";
+import { CartProvider } from "@/lib/cart";
 
 import "./globals.css";
 
@@ -60,9 +62,15 @@ export default function RootLayout({
         >
           Skip to content
         </a>
-        <Navbar salonName={SALON_NAME} />
-        <main id="main">{children}</main>
-        <Footer salonName={SALON_NAME} />
+        {/* The provider wraps the whole tree so a service card anywhere on the
+            page can add to the same cart the sticky bar reads. Server
+            Components stay server-rendered: only the islands are client. */}
+        <CartProvider>
+          <Navbar salonName={SALON_NAME} />
+          <main id="main">{children}</main>
+          <Footer salonName={SALON_NAME} />
+          <SelectionCart />
+        </CartProvider>
       </body>
     </html>
   );

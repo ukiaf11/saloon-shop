@@ -6,6 +6,7 @@
  * client island around the Add control; the card itself stays on the server.
  */
 
+import { AddToCart } from "@/components/cart/add-to-cart";
 import { formatInr } from "@/lib/money";
 import type { Service, ServiceList } from "@/types/api";
 
@@ -77,20 +78,11 @@ function ServiceCard({
           </div>
         </dl>
 
-        {/* Phase 3 owns selection. This is the finished affordance with nothing
-            behind it yet -- disabled rather than silently inert, so nobody taps
-            a dead control and wonders what happened. */}
-        <button
-          type="button"
-          disabled
-          // "Add" alone is ambiguous once a screen reader is reading the
-          // buttons out of context; the visible word stays inside the name, so
-          // voice control still reaches it.
-          aria-label={`Add ${service.name}`}
-          className="border-gold-600/60 text-gold-300 mt-5 w-full cursor-not-allowed rounded-full border px-4 py-2.5 text-sm font-medium opacity-80"
-        >
-          Add
-        </button>
+        {/* The only client island in the card: the card itself stays on the
+            server and renders without JavaScript. */}
+        <div className="mt-5 flex justify-end">
+          <AddToCart serviceId={service.id} serviceName={service.name} />
+        </div>
       </div>
     </li>
   );

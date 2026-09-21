@@ -226,14 +226,65 @@ export type LegalPage = z.infer<typeof legalPageSchema>;
 /* POST /orders/quote                                                          */
 /* -------------------------------------------------------------------------- */
 
-/** POST /orders/quote -- advisory only; the server recomputes at order time. */
+/**
+ * POST /orders/quote -- advisory only. The server recomputes at order time and
+ * again at payment time, so nothing here is authoritative. Rendering it is the
+ * only legitimate use.
+ */
+export const quoteLineSchema = z.object({
+  service_id: z.uuid(),
+  name: z.string(),
+  unit_price_paise: z.number().int().nonnegative(),
+  quantity: z.number().int().positive(),
+  line_total_paise: z.number().int().nonnegative(),
+  discount_alloc_paise: z.number().int().nonnegative(),
+  net_paid_paise: z.number().int().nonnegative(),
+});
+export type QuoteLine = z.infer<typeof quoteLineSchema>;
+
 export const quoteSchema = z.object({
   currency: z.literal("INR"),
   subtotal_paise: z.number().int().nonnegative(),
+  /** The rate actually applied; 0 when the basket is not eligible. */
   discount_percent: z.number().int().min(0).max(100),
+  /** The campaign's rate, applied or not -- used for the "unlock" prompt. */
+  configured_discount_percent: z.number().int().min(0).max(100),
   discount_paise: z.number().int().nonnegative(),
   payable_paise: z.number().int().nonnegative(),
   eligible_for_discount: z.boolean(),
   distinct_service_count: z.number().int().nonnegative(),
+  min_distinct_services: z.number().int().positive(),
+  expires_at: z.string(),
+  lines: z.array(quoteLineSchema),
 });
 export type Quote = z.infer<typeof quoteSchema>;
+
+/** POST /orders response. `id` is the handle the payment step will need. */
+export const orderItemSchema = z.object({
+  service_name: z.string(),
+  unit_price_paise: z.number().int().nonnegative(),
+  quantity: z.number().int().positive(),
+  line_total_paise: z.number().int().nonnegative(),
+  discount_alloc_paise: z.number().int().nonnegative(),
+  net_paid_paise: z.number().int().nonnegative(),
+});
+
+export const orderSchema = z.object({
+  id: z.uuid(),
+  public_order_number: z.string(),
+  status: z.string(),
+  currency: z.literal("INR"),
+  subtotal_paise: z.number().int().nonnegative(),
+  discount_percent_applied: z.number().int().min(0).max(100),
+  discount_paise: z.number().int().nonnegative(),
+  total_paise: z.number().int().nonnegative(),
+  created_at: z.string(),
+  customer: z.object({
+    name: z.string(),
+    // The API returns the phone masked. There is no field here for the full
+    // number because the response never carries one.
+    phone_masked: z.string(),
+  }),
+  items: z.array(orderItemSchema),
+});
+export type Order = z.infer<typeof orderSchema>;

@@ -60,6 +60,11 @@ type RequestOptions = {
   /** Forward the CSRF token on mutating admin requests. */
   csrfToken?: string;
   /**
+   * Sent as `Idempotency-Key`. Reuse the same value across retries of one
+   * logical attempt so a double-submit cannot create two orders.
+   */
+  idempotencyKey?: string;
+  /**
    * Next.js fetch caching. Public marketing reads pass a `revalidate` window
    * and a tag so an owner's edit can be pushed through with `revalidateTag`
    * instead of waiting for a rebuild. Without this, Next caches the response
@@ -85,6 +90,7 @@ export async function apiRequest<T>(
     body,
     signal,
     csrfToken,
+    idempotencyKey,
     next,
     cache,
     credentials = "include",
@@ -94,6 +100,7 @@ export async function apiRequest<T>(
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (csrfToken) headers["X-CSRFToken"] = csrfToken;
+  if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
 
   // Combine the caller's signal with the timeout so either can abort.
   const timeoutSignal = AbortSignal.timeout(timeoutMs);

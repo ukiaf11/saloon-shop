@@ -181,6 +181,17 @@ REST_FRAMEWORK = {
     "UNAUTHENTICATED_USER": None,
 }
 
+# --- CORS -----------------------------------------------------------------
+
+# django-cors-headers' default allowlist does not include Idempotency-Key, so
+# without this the browser rejects the preflight for POST /orders and the call
+# never leaves the page -- while the quote, which sends no such header,
+# succeeds. Allowed origins themselves are set per environment.
+from corsheaders.defaults import default_headers  # noqa: E402
+
+CORS_ALLOW_HEADERS = (*default_headers, "idempotency-key")
+
+
 # --- Business defaults ----------------------------------------------------
 
 CAMPAIGN_RESERVATION_TTL_SECONDS = env.int("CAMPAIGN_RESERVATION_TTL_SECONDS", default=600)

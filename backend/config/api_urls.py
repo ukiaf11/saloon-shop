@@ -14,4 +14,6 @@ urlpatterns = [
     path("", include("apps.salons.urls")),
     path("", include("apps.catalog.urls")),
     path("", include("apps.content.urls")),
+    # Phase 3 -- quote and order engine.
+    path("", include("apps.orders.urls")),
 ]

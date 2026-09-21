@@ -3,7 +3,7 @@
 > Working memory for this project. Read this first at the start of a session; update it at the end of one.
 > Keep it short and current — it is a state file, not a log archive. Details live in the docs it points to.
 
-**Last updated:** 2026-09-20 (Phase 2 complete; repo live, CI/CD green)
+**Last updated:** 2026-09-21 (Phase 3 complete)
 
 ---
 
@@ -21,7 +21,7 @@ The hard requirement underneath all of it: **every money and promotion decision 
 
 | | |
 |---|---|
-| **Phase** | ✅ Phase 1 (foundation) and ✅ Phase 2 (catalog & content) complete. Phase 3 (quote & order engine) is next. |
+| **Phase** | ✅ Phases 1–3 complete (foundation; catalog & content; quote & orders). Phase 4 (daily campaign & lucky engine) is next. |
 | **Code** | `backend/` (Django 5 + DRF, uv-managed) and `frontend/` (Next 16, TS, Tailwind 4) both boot, migrate and pass their checks. |
 | **Repo** | <https://github.com/ukiaf11/saloon-shop> (**public**), branch `main`. CI, container images and Pages all green. |
 | **Specs** | Three source documents (see §3). |
@@ -29,7 +29,7 @@ The hard requirement underneath all of it: **every money and promotion decision 
 | **Engineering blockers** | None until Phase 4 (needs the wording decision) and Phase 5 (needs Razorpay keys). |
 | **Business track** | Owner to approve "5 Lucky Slots"; promotion/refund rules need drafting for legal. |
 
-**Verified working:** `docker compose` Postgres + Redis, migrations, all three seed commands, `/healthz` + `/api/v1/readiness`, Celery round-trip, JSON log redaction, CORS allowlist, image upload validation (rejects disguised non-images and SVG), the six public read endpoints against the contract, the public page rendering real seeded data with full JSON-LD, the Next image optimizer on API-served media. **151 tests pass** (107 backend, 44 frontend); ruff + eslint + tsc + prettier + `check --deploy` all clean.
+**Verified working:** `docker compose` Postgres + Redis, migrations, all three seed commands, `/healthz` + `/api/v1/readiness`, Celery round-trip, JSON log redaction, CORS allowlist, image upload validation (rejects disguised non-images and SVG), the six public read endpoints against the contract, the public page rendering real seeded data with full JSON-LD, the Next image optimizer on API-served media. **222 tests pass** (169 backend, 53 frontend); ruff + eslint + tsc + prettier + `check --deploy` all clean.
 
 **Not yet measured:** Lighthouse mobile score (Phase 2 exit gate names it; needs a real device/CI run).
 
@@ -237,14 +237,72 @@ Phase 8 are exactly what makes them reachable:
 - A build run while the API is down exits 0 and ships empty sections; the 5-minute revalidate window self-heals it. CI builds with no backend, so this tolerance is required.
 - Lighthouse mobile not yet measured.
 
-## 11. Next actions
+## 11. What Phase 3 built
 
-**Engineering — start Phase 3 (quote & order engine):** `QuoteCalculator` and the
-`DiscountAllocator` (the allocator already exists and is property-tested in
-`common/money.py` — wire it to real orders); `Order`/`OrderItem` with snapshot
-fields and `net_paid_paise`; `POST /orders/quote` and `POST /orders`; the
-selection cart, live quote and discount-reveal animation on the frontend.
-Exit gate: a forged client price must produce an order at the correct server price.
+```
+backend/apps/promotions/  CampaignConfig (append-only, effective_from) +
+                          config_for(salon, date) -- reading the newest row
+                          directly would use tomorrow's settings on today's order
+backend/apps/customers/   Customer + normalise_phone (E.164, assumes +91 for a
+                          bare 10-digit entry) so one person is never two rows
+backend/apps/orders/      state.py  -- the full transition table; illegal and
+                                       no-op transitions both raise
+                          services.py -- build_quote / create_order
+                          models   -- Order, OrderItem with snapshot columns and
+                                      DB-level CHECKs on the arithmetic
+frontend/src/lib/cart.tsx     selection state; holds NO money
+frontend/src/lib/use-quote.ts debounced, aborts superseded requests, derives
+                              "loading" so a stale total never shows
+frontend/src/components/cart/, checkout/  sticky bar, discount reveal, drawer
+```
+
+**Scope deviation:** `CampaignConfig` was built in Phase 3, not Phase 4 — a quote
+needs `discount_percent` and `min_distinct_services`. Phase 4 adds only
+`DailyCampaign`, `SlotReservation`, the lucky engine, and the
+`Order.daily_campaign` FK (left out deliberately, as an additive migration).
+
+### Phase 3 decisions worth remembering
+
+- **The request serializers have no price fields at all.** A forged price is not
+  rejected, it is unbindable. Verified over real HTTP.
+- **`discount_percent` vs `configured_discount_percent`.** The first is what was
+  *applied* (0 when ineligible, so the UI can never show a discount that was not
+  given); the second is the campaign rate, so the UI can say "add 1 more service
+  to unlock 10% off" without implying it is already on the total.
+- **Public order numbers are `SL-YYMMDD-XXXX` with a random suffix.** Sequential
+  numbers would tell every customer the salon's order volume.
+- **Idempotency is a request header**, reused across retries of one checkout
+  attempt; the drawer is mounted per-attempt so each gets a fresh key.
+- **Quantity does not unlock the discount.** Only distinct services count.
+
+### Two integration bugs the browser test caught (unit tests could not)
+
+Both were CORS, and both only appear in a real browser:
+
+1. `CORS_ALLOWED_ORIGINS` listed `localhost:3000` but not `127.0.0.1:3000`. A dev
+   using the other spelling gets silently failing quotes. Both are allowlisted now.
+2. `POST /orders` sends an `Idempotency-Key` header, which is **not** in
+   django-cors-headers' default allowlist, so the browser rejected the preflight
+   and the call never left the page — while the quote, which sends no such
+   header, worked fine. `CORS_ALLOW_HEADERS` now includes it.
+
+The lesson worth keeping: any new custom request header needs a
+`CORS_ALLOW_HEADERS` entry, or it fails only in the browser.
+
+## 12. Next actions
+
+**Engineering — start Phase 4 (daily campaign & lucky engine):** `DailyCampaign`
+with unique `(salon_id, campaign_date)`; the 256-bit seed, commitment hash and
+deterministic winning-position sampling; `SlotReservation` + `CapacityGuard`
+under `SELECT ... FOR UPDATE`; scheduled **and** lazy campaign provisioning; the
+`Order.daily_campaign` FK. Exit gates: 20 simultaneous checkouts at
+`paid=39, capacity=40` admit exactly one, and no serializer anywhere leaks a
+winning position.
+
+⚠️ **Blocked on the owner before Phase 4 starts:** the "5 Lucky Slots" wording.
+If they insist on exactly 5 real winners daily, Phase 4 must be built around an
+end-of-day draw instead of immediate reveal — a different architecture, not a
+copy change.
 
 **Business — unblock Phase 4:** get the "5 Lucky Slots" wording signed off.
 
@@ -254,7 +312,7 @@ Exit gate: a forged client price must produce an order at the correct server pri
 gitleaks guards commits before they leave the machine (CI scans too, but that is
 after the fact).
 
-## 12. Repo, CI and deployment
+## 13. Repo, CI and deployment
 
 **Repo:** <https://github.com/ukiaf11/saloon-shop>, public, `main`.
 

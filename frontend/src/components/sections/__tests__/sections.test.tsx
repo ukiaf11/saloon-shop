@@ -9,6 +9,8 @@
  */
 
 import { render, screen } from "@testing-library/react";
+
+import { CartProvider } from "@/lib/cart";
 import { describe, expect, it } from "vitest";
 
 import type { BusinessHour, GalleryImage, Service, ServiceList } from "@/types/api";
@@ -52,24 +54,32 @@ function serviceList(overrides: Partial<ServiceList> = {}): ServiceList {
 describe("ServicesSection", () => {
   it("renders the price through formatInr, never a hand-rolled one", () => {
     render(
-      <ServicesSection
-        services={serviceList({ results: [service({ price_paise: 123456789 })] })}
-      />,
+      <CartProvider>
+        <ServicesSection
+          services={serviceList({ results: [service({ price_paise: 123456789 })] })}
+        />
+      </CartProvider>,
     );
     expect(screen.getByText("₹12,34,567.89")).toBeTruthy();
   });
 
   it("renders duration in hours once it passes an hour", () => {
     render(
-      <ServicesSection
-        services={serviceList({ results: [service({ duration_minutes: 90 })] })}
-      />,
+      <CartProvider>
+        <ServicesSection
+          services={serviceList({ results: [service({ duration_minutes: 90 })] })}
+        />
+      </CartProvider>,
     );
     expect(screen.getByText("1 hr 30 min")).toBeTruthy();
   });
 
   it("groups under category headings and keeps heading order h2 -> h3 -> h4", () => {
-    const { container } = render(<ServicesSection services={serviceList()} />);
+    const { container } = render(
+      <CartProvider>
+        <ServicesSection services={serviceList()} />
+      </CartProvider>,
+    );
     expect(container.querySelector("h2")?.textContent).toBe("Services");
     expect(container.querySelector("h3")?.textContent).toBe("Hair");
     expect(container.querySelector("h4")?.textContent).toBe("Hair Cutting");
@@ -77,9 +87,14 @@ describe("ServicesSection", () => {
 
   it("promotes service names to h3 when there are no categories", () => {
     const { container } = render(
-      <ServicesSection
-        services={serviceList({ categories: [], results: [service({ category: null })] })}
-      />,
+      <CartProvider>
+        <ServicesSection
+          services={serviceList({
+            categories: [],
+            results: [service({ category: null })],
+          })}
+        />
+      </CartProvider>,
     );
     expect(container.querySelector("h3")?.textContent).toBe("Hair Cutting");
     expect(container.querySelector("h4")).toBeNull();
@@ -95,20 +110,32 @@ describe("ServicesSection", () => {
         slug: "ghost",
       },
     });
-    render(<ServicesSection services={serviceList({ results: [service(), orphan] })} />);
+    render(
+      <CartProvider>
+        <ServicesSection services={serviceList({ results: [service(), orphan] })} />
+      </CartProvider>,
+    );
     expect(screen.getByText("Head Massage")).toBeTruthy();
     expect(screen.getByText("More services")).toBeTruthy();
   });
 
-  it("leaves the Add control inert until Phase 3 wires selection", () => {
-    render(<ServicesSection services={serviceList()} />);
+  it("offers a working Add control that names the service it adds", () => {
+    render(
+      <CartProvider>
+        <ServicesSection services={serviceList()} />
+      </CartProvider>,
+    );
     const add = screen.getByRole("button", { name: "Add Hair Cutting" });
-    expect((add as HTMLButtonElement).disabled).toBe(true);
+    // Not disabled any more: Phase 3 wired selection. The service name stays in
+    // the accessible name so the button is unambiguous out of context.
+    expect((add as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("keeps the #services anchor alive when the catalogue is empty", () => {
     const { container } = render(
-      <ServicesSection services={{ categories: [], results: [] }} />,
+      <CartProvider>
+        <ServicesSection services={{ categories: [], results: [] }} />
+      </CartProvider>,
     );
     expect(container.querySelector("#services")).not.toBeNull();
     expect(container.querySelector("ul")).toBeNull();

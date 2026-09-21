@@ -119,7 +119,7 @@ until the Phase 8 admin writes exist, and the gallery is empty pending real phot
 
 ---
 
-## Phase 3 — Quote & order engine (4–5 days)
+## Phase 3 — Quote & order engine (4–5 days) ✅ COMPLETE 2026-09-21
 
 **Backend**
 - [ ] `QuoteCalculator`: distinct-service counting, eligibility against `min_distinct_services`, integer-paise arithmetic.
@@ -139,6 +139,14 @@ until the Phase 8 admin writes exist, and the gallery is empty pending real phot
 **Tests:** discount boundary (1 vs 2 distinct services), quantity-of-same-service does *not* trigger the discount, rounding edges (₹0.01 cases), inactive/missing service rejection, **price-tampering attempt is ignored**.
 
 **Done when:** a client request carrying a forged price produces an order at the correct server-side price.
+
+**Outcome:** done. Verified over real HTTP — a request carrying `price_paise: 1`,
+`total_paise: 1`, `discount_paise: 999999` and `status: "PAID"` produced an order
+at ₹990 with status `DRAFT`. Scope note: `CampaignConfig` was built here rather
+than in Phase 4, because a quote cannot be computed without `discount_percent`
+and `min_distinct_services`. Phase 4 therefore adds only `DailyCampaign`,
+`SlotReservation` and the lucky engine — plus the `Order.daily_campaign` FK,
+deliberately left out here as an additive migration later.
 
 ---
 

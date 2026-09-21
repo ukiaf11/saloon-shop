@@ -11,6 +11,7 @@ import logging
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
 from rest_framework import status
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
 
@@ -135,6 +136,23 @@ def api_exception_handler(exc, context):
                 }
             },
             status=status.HTTP_409_CONFLICT,
+        )
+
+    if isinstance(exc, DRFValidationError):
+        # Serializer rejections are ordinary bad input, so they carry the same
+        # machine-readable code as our own ValidationFailed. Without this they
+        # arrive as a generic "request_failed" and the frontend cannot tell a
+        # form error from a server fault.
+        return Response(
+            {
+                "error": {
+                    "code": "validation_failed",
+                    "message": _first_message(exc.detail),
+                    "request_id": get_request_id(),
+                    "fields": exc.detail if isinstance(exc.detail, dict) else None,
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
     response = drf_exception_handler(exc, context)
