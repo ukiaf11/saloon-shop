@@ -337,6 +337,18 @@ frontend/src/components/sections/campaign.tsx  live counters, polled
   fields, pins down who may call `decrypt_winning_positions`, and asserts the
   view cannot build its own payload around `public_progress`.
 
+### The bug CI caught that local runs hid
+
+pytest-django forces `settings.DEBUG = False` during tests, so `common/crypto.py`
+takes its production branch and demands a real key. Locally the suite passed
+only because a `.env` file happened to exist on disk — django-environ reads that
+file regardless of the process environment. CI has no `.env`, so every
+campaign test 500'd.
+
+Fixed by giving the suite its own key in `backend/conftest.py`, the same way the
+cache is isolated there. **Tests must not depend on ambient config.** Verified
+by deleting `.env` entirely and re-running: 231 pass.
+
 ### Carried into Phase 6
 
 `decrypt_winning_positions()` currently has no caller. Phase 6's lucky decision

@@ -31,6 +31,21 @@ def _isolated_cache(settings):
 
 
 @pytest.fixture(autouse=True)
+def _test_encryption_key(settings):
+    """Give every test a fixed field-encryption key.
+
+    pytest-django forces settings.DEBUG = False during tests, so common.crypto
+    takes its production branch and demands a real key. Without this the suite
+    passes only on machines that happen to have a .env on disk -- which is how
+    it passed locally and failed in CI.
+
+    A fixed key also keeps ciphertext reproducible within a run, and it is
+    obviously not a production value.
+    """
+    settings.FIELD_ENCRYPTION_KEY = "c2Fsb29uLXRlc3Qta2V5LW5vdC1wcm9kdWN0aW9uISE="
+
+
+@pytest.fixture(autouse=True)
 def _never_use_real_broker(settings):
     """Celery tasks run inline in tests; nothing should reach a real broker."""
     settings.CELERY_TASK_ALWAYS_EAGER = True
