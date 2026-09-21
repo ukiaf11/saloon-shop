@@ -3,7 +3,7 @@
 > Working memory for this project. Read this first at the start of a session; update it at the end of one.
 > Keep it short and current — it is a state file, not a log archive. Details live in the docs it points to.
 
-**Last updated:** 2026-09-21 (Phase 4 complete)
+**Last updated:** 2026-09-21 (Phase 4 complete; claymorphism redesign; Railway-ready)
 
 ---
 
@@ -29,7 +29,7 @@ The hard requirement underneath all of it: **every money and promotion decision 
 | **Engineering blockers** | None until Phase 4 (needs the wording decision) and Phase 5 (needs Razorpay keys). |
 | **Business track** | Owner to approve "5 Lucky Slots"; promotion/refund rules need drafting for legal. |
 
-**Verified working:** `docker compose` Postgres + Redis, migrations, all three seed commands, `/healthz` + `/api/v1/readiness`, Celery round-trip, JSON log redaction, CORS allowlist, image upload validation (rejects disguised non-images and SVG), the six public read endpoints against the contract, the public page rendering real seeded data with full JSON-LD, the Next image optimizer on API-served media. **284 tests pass** (231 backend, 53 frontend); ruff + eslint + tsc + prettier + `check --deploy` all clean.
+**Verified working:** `docker compose` Postgres + Redis, migrations, all three seed commands, `/healthz` + `/api/v1/readiness`, Celery round-trip, JSON log redaction, CORS allowlist, image upload validation (rejects disguised non-images and SVG), the six public read endpoints against the contract, the public page rendering real seeded data with full JSON-LD, the Next image optimizer on API-served media. **293 tests pass** (235 backend, 58 frontend); ruff + eslint + tsc + prettier + `check --deploy` all clean.
 
 **Not yet measured:** Lighthouse mobile score (Phase 2 exit gate names it; needs a real device/CI run).
 
@@ -355,7 +355,72 @@ by deleting `.env` entirely and re-running: 231 pass.
 will be the first, and `tests/test_no_secret_leaks.py` must be updated to allow
 it — deliberately, so adding a caller is a conscious act.
 
-## 13. Next actions
+## 13. Claymorphism redesign, images, mobile, Railway-readiness (2026-09-21)
+
+### Design system (`frontend/src/app/globals.css`)
+Warm clay palette, dual inner shadow + soft drop shadow, generous radii. Utilities:
+`clay`, `clay-sm`, `clay-well` (pressed-in), `clay-btn`, `clay-btn-soft`.
+Fonts: **Fraunces with its SOFT axis at 100** (rounded serif) + **Nunito**.
+**Every text/background pairing was measured to WCAG AA before use** — clay
+palettes drift into pastel-on-cream easily; re-measure before adding a colour.
+
+### Images
+- **Illustrations** (`components/clay/clay-art.tsx`): original SVG clay art, one
+  per service slug plus step/trust icons. Unknown slugs fall back to a comb.
+- **Photos**: 3 CC BY 2.0 images by Nenad Stojkovic via Wikimedia Commons,
+  in `src/assets/photos/`, credited on-image and at `/credits`
+  (generated from `credits.json`). Two candidates were rejected: one dated and
+  off-brand, one with an identifiable customer's face.
+- **Photos are IMPORTED, not referenced by path.** A string src is not prefixed
+  with basePath when images are unoptimized, so on GitHub Pages every photo
+  404'd. Imports get basePath, content hashing and blur placeholders.
+
+### Honesty decisions — do not undo
+- **Seeded testimonials are unpublished.** They were invented in Phase 2;
+  fake reviews on a real business's site mislead customers. A test pins this.
+- **Gallery renders nothing until the owner uploads real photos** — stock
+  photography must not be passed off as this salon.
+- Preview-mode copy says the lucky draw runs on **paid online bookings** — an
+  earlier draft wrongly implied walk-ins entered it.
+
+### Mobile (measured at 360/390/430/768px)
+Zero horizontal scroll; zero text under 12px; tap targets 44px (steppers 40px);
+all inputs 16px so iOS Safari does not zoom; phone field opens the numeric
+keypad; checkout sheet fits the viewport and locks background scroll. Services
+and how-it-works are compact horizontal rows on phones. Hero shows 2 badges on
+phones (3 covered the photo credit). Scripts that measured all this live in the
+session scratchpad, not the repo.
+
+### GitHub Pages now shows real data
+`pages.yml` runs Postgres + Redis + the real Django API **inside the build
+job**, seeds it, and exports against it. Guard: the job fails if the export has
+no services. Two URLs, deliberately:
+- `API_INTERNAL_URL` — server-only, never inlined; used at build/SSR time.
+- `NEXT_PUBLIC_API_BASE_URL` — what the **browser** calls. With a single URL the
+  Pages bundle pointed every visitor's browser at its own localhost.
+With no public API configured, `NEXT_PUBLIC_BOOKING_ENABLED=0`: Add becomes
+"Book in salon", the cart tray and campaign poll stand down (a stale cart in
+localStorage is guarded too).
+
+### Railway — blocked on the plan, not on the code
+Project creation was refused: *"Free plan resource provision limit exceeded."*
+The existing project `appealing-surprise` holds an unrelated app (`Hotel-Web`)
+and was left alone. Everything else is done and verified against the real
+production images:
+- gunicorn binds `$PORT`; `/healthz` exempt from the HTTPS redirect; the
+  healthcheck host is allowed; JSON-only renderer; media from a volume.
+- **Throttling fails open** when Redis is down — a Redis blip previously 500'd
+  the whole API. Verified by stopping Redis: site stays up, `/readiness` reports it.
+- `scripts/railway_provision.py` provisions everything; every mutation, arg and
+  input field was checked against Railway's live schema by introspection.
+- The Railway CLI rejects this token (it calls `me`); the GraphQL API accepts it.
+
+**To go live once credits are added:** (1) in Railway, allow its GitHub app to
+read `ukiaf11/saloon-shop`; (2) `RAILWAY_API_KEY=... python scripts/railway_provision.py`;
+(3) run the four seed commands it prints. Railway's repo integration is then the
+CD — do not add a separate deploy Action, it would double-deploy.
+
+## 14. Next actions
 
 **Engineering — Phase 5 (payments), blocked on Razorpay test keys.** Provider
 abstraction, `PaymentGatewayConfig` storing secret *references* only, payment
@@ -380,7 +445,7 @@ reveal**. The end-of-day-draw alternative is off the table.
 gitleaks guards commits before they leave the machine (CI scans too, but that is
 after the fact).
 
-## 14. Repo, CI and deployment
+## 15. Repo, CI and deployment
 
 **Repo:** <https://github.com/ukiaf11/saloon-shop>, public, `main`.
 

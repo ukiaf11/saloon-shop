@@ -17,8 +17,33 @@ import { z } from "zod";
  * the value to an empty string, not undefined, which would make every request
  * URL relative and hang the build. Treat blank as unset.
  */
-export const API_BASE_URL =
+const PUBLIC_API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://localhost:8000/api/v1";
+
+/**
+ * Server-side override, deliberately NOT prefixed NEXT_PUBLIC_ so it is never
+ * inlined into the browser bundle.
+ *
+ * Two different callers need two different addresses. Server rendering (and the
+ * static export's build step) can reach the API over a private network -- the
+ * GitHub Pages build talks to a backend running inside the CI job, and on
+ * Railway it can use the internal hostname. The browser needs the public URL.
+ * With a single variable, the Pages build baked the CI job's 127.0.0.1 into the
+ * bundle and every visitor's browser tried to call its own localhost.
+ */
+const INTERNAL_API_BASE_URL = process.env.API_INTERNAL_URL?.trim();
+
+export const API_BASE_URL =
+  typeof window === "undefined" && INTERNAL_API_BASE_URL
+    ? INTERNAL_API_BASE_URL
+    : PUBLIC_API_BASE_URL;
+
+/**
+ * False on a static preview that has no public API behind it (GitHub Pages
+ * before a backend is deployed). Booking and live counters then stand down
+ * instead of calling an address that cannot answer.
+ */
+export const BOOKING_ENABLED = process.env.NEXT_PUBLIC_BOOKING_ENABLED !== "0";
 
 /**
  * No request may hang indefinitely. A static export fetches at build time, and

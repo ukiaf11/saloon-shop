@@ -1,0 +1,29 @@
+[
+  {
+    "file": "src/assets/photos/barber-comb-portrait.webp",
+    "title": "Barber cutting hair with comb. Back view of young man in barber shop.jpg",
+    "author": "Nenad Stojkovic",
+    "license": "CC BY 2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Barber_cutting_hair_with_comb._Back_view_of_young_man_in_barber_shop.jpg",
+    "size": "900x1348"
+  },
+  {
+    "file": "src/assets/photos/barber-comb-wide.webp",
+    "title": "Barber cutting hair with comb. Back view of man in barber shop.jpg",
+    "author": "Nenad Stojkovic",
+    "license": "CC BY 2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Barber_cutting_hair_with_comb._Back_view_of_man_in_barber_shop.jpg",
+    "size": "1400x935"
+  },
+  {
+    "file": "src/assets/photos/trendy-haircut.webp",
+    "title": "Young men with trendy haircut at barber shop.jpg",
+    "author": "Nenad Stojkovic",
+    "license": "CC BY 2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Young_men_with_trendy_haircut_at_barber_shop.jpg",
+    "size": "900x1348"
+  }
+]

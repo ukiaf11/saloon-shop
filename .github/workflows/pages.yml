@@ -36,12 +36,62 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
+
+    # The real backend runs inside this job so the export bakes in real data
+    # (services, hours, FAQs) instead of empty sections. It is the actual API
+    # answering from the seed data -- not a second copy of the catalogue kept in
+    # the frontend, which would be a second source of truth for prices.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: salon
+          POSTGRES_PASSWORD: salon
+          POSTGRES_DB: salon
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U salon"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.local
+      DATABASE_URL: postgres://salon:salon@localhost:5432/salon
+      REDIS_URL: redis://localhost:6379/0
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.11.5"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Start the API with seed data
+        working-directory: backend
+        run: |
+          # Throwaway secrets: this database and server die with the job.
+          export DJANGO_SECRET_KEY="$(python3 -c 'import secrets;print(secrets.token_urlsafe(50))')"
+          export SEED_OWNER_PASSWORD="$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')"
+          uv sync --frozen
+          uv run python manage.py migrate --noinput
+          uv run python manage.py seed_salon
+          uv run python manage.py seed_catalog
+          uv run python manage.py seed_content
+          uv run python manage.py seed_campaign_config
+          nohup uv run python manage.py runserver 127.0.0.1:8000 > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8000/api/v1/services >/dev/null && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8000/api/v1/services | head -c 200; echo
 
       - uses: actions/setup-node@v4
         with:
@@ -50,6 +100,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - run: npm ci
+        working-directory: frontend
 
       - name: Resolve Pages base path
         id: base
@@ -66,35 +117,33 @@ jobs:
             echo "site_url=https://${OWNER}.github.io/${REPO_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Report what this build can reach
-        run: |
-          if [ -n "${{ vars.PUBLIC_API_BASE_URL }}" ]; then
-            echo "API set to ${{ vars.PUBLIC_API_BASE_URL }} - live content will be baked in."
-          else
-            echo "::warning::No PUBLIC_API_BASE_URL repository variable set. The site will"
-            echo "::warning::build with empty Services/Gallery/Testimonials/FAQ sections."
-            echo "::warning::Set it under Settings > Secrets and variables > Actions > Variables"
-            echo "::warning::to a publicly reachable Django API, e.g. https://api.example.com/api/v1"
-          fi
-
       - name: Build static export
+        working-directory: frontend
         env:
           NEXT_OUTPUT_EXPORT: "1"
           NEXT_BASE_PATH: ${{ steps.base.outputs.base_path }}
           NEXT_PUBLIC_SITE_URL: ${{ steps.base.outputs.site_url }}
-          # Point at a live API if one exists; otherwise the readers time out
-          # quickly and degrade to empty sections rather than failing the build.
-          # Deliberately left unset when the variable is empty: an empty string
-          # is not the same as absent, and would make request URLs relative.
-          NEXT_PUBLIC_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL || 'http://127.0.0.1:9/api/v1' }}
+          # Build-time reads go to the API running inside this job. Server-only:
+          # it is never inlined into the browser bundle (see lib/api.ts).
+          API_INTERNAL_URL: http://127.0.0.1:8000/api/v1
+          # What the BROWSER calls. Only a real public API belongs here; with
+          # none configured, booking and live counters stand down rather than
+          # sending every visitor's browser to an address that cannot answer.
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL }}
+          NEXT_PUBLIC_BOOKING_ENABLED: ${{ vars.PUBLIC_API_BASE_URL != '' && '1' || '0' }}
           NEXT_PUBLIC_MEDIA_HOSTNAME: ${{ vars.PUBLIC_MEDIA_HOSTNAME }}
           # Set the PAGES_ALLOW_INDEXING variable to "1" only once this really
           # is the production site and checkout works.
           NEXT_PUBLIC_NOINDEX: ${{ vars.PAGES_ALLOW_INDEXING == '1' && '0' || '1' }}
-        run: npm run build
+        run: |
+          npm run build
+          # Fail loudly if the export came out empty -- that is the bug this
+          # job exists to prevent.
+          grep -q "Hair Cutting" out/index.html || { echo "::error::export has no services"; exit 1; }
 
       - name: Disable Jekyll processing
         # Without this, Pages' Jekyll step drops every _next/ directory.
+        working-directory: frontend
         run: touch out/.nojekyll
 
       - uses: actions/configure-pages@v5

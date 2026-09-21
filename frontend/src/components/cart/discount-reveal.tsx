@@ -41,14 +41,14 @@ export function DiscountReveal({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.25 }}
-          className="text-success flex flex-wrap items-baseline gap-x-2 text-sm"
+          className="bg-mint text-ink inline-flex flex-wrap items-baseline gap-x-2 rounded-full px-3.5 py-1 text-sm"
           // The discount appearing is a meaningful change, so announce it.
           role="status"
         >
-          <span className="font-medium">
-            {discountPercent}% multi-service discount applied
-          </span>
-          <span className="text-ivory-300">You save {formatInr(discountPaise)}</span>
+          {/* Short enough for one line at 360px, while still saying WHY the
+              price dropped -- Doc 3 section 9 asks for exactly that. */}
+          <span className="font-extrabold">Multi-service {discountPercent}% off</span>
+          <span className="font-semibold">· you save {formatInr(discountPaise)}</span>
         </motion.p>
       ) : remaining > 0 ? (
         <motion.p
@@ -57,7 +57,7 @@ export function DiscountReveal({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="text-ivory-500 text-sm"
+          className="text-ink-soft text-sm font-semibold"
         >
           Add {remaining} more {remaining === 1 ? "service" : "services"} to unlock{" "}
           {configuredDiscountPercent > 0

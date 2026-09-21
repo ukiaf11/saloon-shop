@@ -10,10 +10,11 @@
 
 import { FaqSection } from "@/components/sections/faq";
 import { CampaignSection } from "@/components/sections/campaign";
+import { CtaBand } from "@/components/sections/cta-band";
+import { Hero } from "@/components/sections/hero";
 import { GallerySection } from "@/components/sections/gallery";
 import { HowItWorksSection } from "@/components/sections/how-it-works";
 import { LocationSection } from "@/components/sections/location";
-import { OpeningHoursSection } from "@/components/sections/opening-hours";
 import { ServicesSection } from "@/components/sections/services";
 import { TestimonialsSection } from "@/components/sections/testimonials";
 import { WhyChooseUsSection } from "@/components/sections/why-choose-us";
@@ -25,20 +26,6 @@ import {
   getTestimonials,
 } from "@/lib/site-data";
 import { faqJsonLd, localBusinessJsonLd, serviceJsonLd } from "@/lib/structured-data";
-
-/**
- * Signed-off marketing copy, held here rather than read from SiteContent.
- *
- * "Har Din 5 Lucky Slots" is the wording the owner is signing off on, and the
- * campaign design hangs off it (memory.md sections 4 and 6). It should not be
- * able to change through a content edit, or vanish because /salon was briefly
- * unreachable at build time. The backend serves the same strings as its
- * SiteContent defaults; wire the hero to them once the wording is final.
- */
-const HERO = {
-  eyebrow: "Premium grooming. Daily rewards.",
-  heading: "Har Din 5 Lucky Slots",
-} as const;
 
 /** How many gallery images to advertise in the LocalBusiness markup. */
 const JSON_LD_IMAGE_LIMIT = 3;
@@ -98,36 +85,7 @@ export default async function Home() {
         />
       ) : null}
 
-      <section className="mx-auto max-w-6xl px-4 py-20 sm:py-28">
-        <p className="text-gold-500 text-xs tracking-[0.2em] uppercase">{HERO.eyebrow}</p>
-        <h1 className="text-ivory-50 mt-5 max-w-3xl font-[family-name:var(--font-display-loaded)] text-4xl leading-tight sm:text-6xl">
-          {HERO.heading}
-        </h1>
-        <p className="text-ivory-300 mt-5 max-w-xl text-lg">
-          Hair Cutting + Shaving + Face Massage — free for the day&apos;s lucky slots.
-          Pick two or more services and save 10% automatically.
-        </p>
-        <div className="mt-9 flex flex-wrap gap-3">
-          <a
-            href="#services"
-            className="bg-gold-500 text-ink-950 hover:bg-gold-400 rounded-full px-7 py-3 font-medium transition-colors"
-          >
-            Book Now
-          </a>
-          <a
-            href="#services"
-            className="border-ink-600 text-ivory-100 hover:border-gold-500 rounded-full border px-7 py-3 font-medium transition-colors"
-          >
-            View Services
-          </a>
-        </div>
-        <p className="text-ivory-500 mt-6 text-xs">
-          Daily promotional capacity and campaign rules apply.{" "}
-          <a href="/promotion-rules" className="hover:text-gold-400 underline">
-            View promotion rules
-          </a>
-        </p>
-      </section>
+      <Hero />
 
       {/* Live counters from GET /promotion/today. Client-rendered and polled,
           because a baked-in slot count goes stale the moment anyone books. */}
@@ -144,17 +102,14 @@ export default async function Home() {
       <GallerySection images={gallery} />
       <TestimonialsSection testimonials={testimonials} />
 
-      {salon ? (
-        <>
-          <WhyChooseUsSection items={salon.content.why_choose_us} />
-          <OpeningHoursSection hours={salon.business_hours} />
-        </>
-      ) : null}
+      {salon ? <WhyChooseUsSection items={salon.content.why_choose_us} /> : null}
 
       {/* Always rendered, even with salon === null: the navbar links to
           #contact from every page, so the anchor must exist. The section
           handles its own empty state. */}
       <LocationSection salon={salon} />
+
+      <CtaBand />
 
       <FaqSection faqs={faqs} />
     </>

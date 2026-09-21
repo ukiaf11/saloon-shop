@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Playfair_Display } from "next/font/google";
+import { Fraunces, Nunito } from "next/font/google";
 
 import { SelectionCart } from "@/components/cart/selection-cart";
 import { Footer } from "@/components/layout/footer";
@@ -8,13 +8,17 @@ import { CartProvider } from "@/lib/cart";
 
 import "./globals.css";
 
-const playfair = Playfair_Display({
+// Fraunces is variable on a SOFT axis that rounds its serifs; globals.css turns
+// it up so headings sit naturally beside clay surfaces. Nunito's rounded
+// terminals carry the same softness into body text.
+const fraunces = Fraunces({
   subsets: ["latin"],
   variable: "--font-display-loaded",
   display: "swap",
+  axes: ["SOFT", "WONK", "opsz"],
 });
 
-const inter = Inter({
+const nunito = Nunito({
   subsets: ["latin"],
   variable: "--font-body-loaded",
   display: "swap",
@@ -45,7 +49,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0d0b0a",
+  themeColor: "#f3e9df",
   width: "device-width",
   initialScale: 1,
 };
@@ -54,11 +58,11 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en-IN" className={`${playfair.variable} ${inter.variable}`}>
-      <body className="bg-ink-950 text-ivory-100 min-h-dvh antialiased">
+    <html lang="en-IN" className={`${fraunces.variable} ${nunito.variable}`}>
+      <body className="text-ink min-h-dvh antialiased">
         <a
           href="#main"
-          className="focus:bg-gold-500 focus:text-ink-950 sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:px-4 focus:py-2"
+          className="focus:clay-btn sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-5 focus:py-2.5 focus:font-semibold"
         >
           Skip to content
         </a>

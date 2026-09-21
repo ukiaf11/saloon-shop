@@ -52,3 +52,16 @@ then the redesign, then Phase 5.
 ## E. Close-out
 - [ ] Update README, memory.md, IMPLEMENTATION_PLAN.md
 - [ ] Commit, push, confirm CI + deploy green
+
+
+---
+
+## Status (2026-09-21)
+
+- **A. Railway** — everything done and verified against the real production
+  images **except provisioning**, which Railway refuses on the current plan.
+  One command once credits exist (see memory.md §13).
+- **B. Images** — done: original clay illustrations + 3 CC BY photos, credited.
+- **C. Claymorphism** — done, AA contrast measured, mobile audited at 4 widths.
+- **D. Phase 5** — not started this session; still needs Razorpay test keys.
+- Added mid-task: **mobile responsiveness** (user request) — done and measured.

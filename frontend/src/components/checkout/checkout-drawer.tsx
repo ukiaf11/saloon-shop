@@ -127,7 +127,7 @@ export function CheckoutDrawer({
         type="button"
         aria-label="Close checkout"
         onClick={onClose}
-        className="absolute inset-0 bg-black/70"
+        className="absolute inset-0 bg-[#3a2a22]/45 backdrop-blur-sm"
       />
 
       <motion.div
@@ -138,32 +138,29 @@ export function CheckoutDrawer({
         role="dialog"
         aria-modal="true"
         aria-labelledby="checkout-title"
-        className="border-ink-700 bg-ink-900 rounded-card relative max-h-[92dvh] w-full max-w-lg overflow-y-auto border p-6 sm:p-8"
+        className="clay relative m-3 max-h-[92dvh] w-full max-w-lg overflow-y-auto p-6 sm:p-8"
       >
         {placed ? (
           <div>
-            <h2
-              id="checkout-title"
-              className="text-ivory-50 font-[family-name:var(--font-display-loaded)] text-2xl"
-            >
+            <h2 id="checkout-title" className="font-display text-ink text-3xl">
               Order created
             </h2>
-            <p className="text-ivory-300 mt-3 text-sm">
+            <p className="text-ink-soft mt-3">
               Your order number is{" "}
-              <span className="text-gold-400 font-medium">
+              <span className="bg-lucky-soft text-ink rounded-lg px-2 py-0.5 font-extrabold">
                 {placed.public_order_number}
               </span>
               .
             </p>
             {/* Said plainly: nothing has been charged yet. */}
-            <p className="text-warning mt-4 text-sm">
+            <p className="bg-butter text-ink mt-5 rounded-2xl px-4 py-3 text-sm font-semibold">
               Online payment is not live yet. Please show this order number at the salon —
               no money has been taken.
             </p>
-            <dl className="border-ink-700 mt-5 border-t pt-4 text-sm">
+            <dl className="clay-well mt-5 px-5 py-4 text-sm">
               <div className="flex justify-between py-1">
-                <dt className="text-ivory-500">Total</dt>
-                <dd className="text-ivory-50 tabular-nums">
+                <dt className="text-ink-soft font-bold">Total</dt>
+                <dd className="font-display text-ink text-xl tabular-nums">
                   {formatInr(placed.total_paise)}
                 </dd>
               </div>
@@ -174,42 +171,39 @@ export function CheckoutDrawer({
                 setPlaced(null);
                 onClose();
               }}
-              className="bg-gold-500 text-ink-950 hover:bg-gold-400 mt-6 w-full rounded-full px-6 py-3 text-sm font-medium transition-colors"
+              className="clay-btn mt-6 w-full px-6 py-3.5 font-bold"
             >
               Done
             </button>
           </div>
         ) : (
           <form onSubmit={onSubmit} noValidate>
-            <h2
-              id="checkout-title"
-              className="text-ivory-50 font-[family-name:var(--font-display-loaded)] text-2xl"
-            >
+            <h2 id="checkout-title" className="font-display text-ink text-3xl">
               Your details
             </h2>
 
             {quote ? (
-              <dl className="border-ink-700 mt-5 border-y py-3 text-sm">
+              <dl className="clay-well mt-5 px-5 py-4 text-sm">
                 {quote.lines.map((line) => (
                   <div key={line.service_id} className="flex justify-between py-1">
-                    <dt className="text-ivory-300">
+                    <dt className="text-ink-soft font-semibold">
                       {line.name}
                       {line.quantity > 1 ? ` × ${line.quantity}` : ""}
                     </dt>
-                    <dd className="text-ivory-100 tabular-nums">
+                    <dd className="text-ink font-semibold tabular-nums">
                       {formatInr(line.line_total_paise)}
                     </dd>
                   </div>
                 ))}
                 {quote.discount_paise > 0 ? (
-                  <div className="text-success flex justify-between py-1">
+                  <div className="text-success flex justify-between py-1 font-bold">
                     <dt>{quote.discount_percent}% multi-service offer</dt>
                     <dd className="tabular-nums">−{formatInr(quote.discount_paise)}</dd>
                   </div>
                 ) : null}
-                <div className="border-ink-700 mt-2 flex justify-between border-t pt-2">
-                  <dt className="text-ivory-50 font-medium">Payable</dt>
-                  <dd className="text-ivory-50 font-medium tabular-nums">
+                <div className="mt-2 flex justify-between border-t border-[#3a2a22]/10 pt-3">
+                  <dt className="text-ink font-extrabold">Payable</dt>
+                  <dd className="font-display text-ink text-xl tabular-nums">
                     {formatInr(quote.payable_paise)}
                   </dd>
                 </div>
@@ -284,14 +278,14 @@ export function CheckoutDrawer({
               <button
                 type="button"
                 onClick={onClose}
-                className="border-ink-600 text-ivory-100 hover:border-gold-500 flex-1 rounded-full border px-6 py-3 text-sm transition-colors"
+                className="clay-btn-soft flex-1 px-6 py-3.5 text-sm font-bold"
               >
                 Back
               </button>
               <button
                 type="submit"
                 disabled={submitting || !quote}
-                className="bg-gold-500 text-ink-950 hover:bg-gold-400 flex-[2] rounded-full px-6 py-3 text-sm font-medium transition-colors disabled:opacity-50"
+                className="clay-btn flex-[2] px-6 py-3.5 text-sm font-bold"
               >
                 {submitting
                   ? "Placing order…"
@@ -308,7 +302,7 @@ export function CheckoutDrawer({
 }
 
 const inputClass =
-  "w-full rounded-lg border border-ink-600 bg-ink-950 px-4 py-2.5 text-ivory-50 placeholder:text-ivory-500 focus-visible:border-gold-500";
+  "clay-well w-full px-4 py-3 text-ink font-semibold placeholder:text-ink-muted placeholder:font-normal";
 
 function Field({
   id,
@@ -327,9 +321,9 @@ function Field({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="text-ivory-300 mb-1.5 block text-sm">
+      <label htmlFor={id} className="text-ink mb-2 block text-sm font-bold">
         {label}
-        {hint ? <span className="text-ivory-500"> ({hint})</span> : null}
+        {hint ? <span className="text-ink-muted font-semibold"> ({hint})</span> : null}
         {required ? (
           <span className="text-danger" aria-hidden="true">
             {" "}

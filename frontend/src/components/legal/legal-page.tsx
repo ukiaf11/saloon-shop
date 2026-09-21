@@ -29,37 +29,40 @@ export async function LegalPage({
   const page = await getLegalPage(slug);
 
   return (
-    <article className="mx-auto max-w-3xl px-4 py-16">
-      <h1 className="text-ivory-50 font-[family-name:var(--font-display-loaded)] text-3xl">
-        {page?.title ?? fallbackTitle}
-      </h1>
+    <article className="mx-auto max-w-3xl px-4 py-12 sm:py-16">
+      <div className="clay p-6 sm:p-10">
+        <h1 className="font-display text-ink text-4xl">{page?.title ?? fallbackTitle}</h1>
 
-      {page ? (
-        <>
-          <p className="text-ivory-500 mt-3 text-xs">
-            Version {page.version}
-            {page.published_at
-              ? ` · published ${new Date(page.published_at).toLocaleDateString("en-IN", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                  timeZone: "Asia/Kolkata",
-                })}`
-              : null}
+        {page ? (
+          <>
+            <p className="text-ink-muted mt-3 text-sm font-semibold">
+              Version {page.version}
+              {page.published_at
+                ? ` · published ${new Date(page.published_at).toLocaleDateString(
+                    "en-IN",
+                    {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                      timeZone: "Asia/Kolkata",
+                    },
+                  )}`
+                : null}
+            </p>
+            <div className="legal-prose mt-8">
+              <Markdown remarkPlugins={[remarkGfm]}>{page.body_markdown}</Markdown>
+            </div>
+          </>
+        ) : (
+          // An unpublished page is a normal pre-launch state, not an error. Say so
+          // plainly rather than showing a 404 -- the route is linked from the
+          // footer of every page.
+          <p className="bg-butter text-ink mt-6 rounded-2xl px-5 py-4 font-semibold">
+            This page has not been published yet. Please contact the salon directly if you
+            need these terms before they are available here.
           </p>
-          <div className="legal-prose mt-8">
-            <Markdown remarkPlugins={[remarkGfm]}>{page.body_markdown}</Markdown>
-          </div>
-        </>
-      ) : (
-        // An unpublished page is a normal pre-launch state, not an error. Say so
-        // plainly rather than showing a 404 -- the route is linked from the
-        // footer of every page.
-        <p className="text-ivory-300 mt-4">
-          This page has not been published yet. Please contact the salon directly if you
-          need these terms before they are available here.
-        </p>
-      )}
+        )}
+      </div>
     </article>
   );
 }

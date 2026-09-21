@@ -40,10 +40,18 @@ def test_seed_creates_the_contract_content_keys(salon):
     }
 
 
-def test_seed_creates_published_faqs_and_testimonials(salon):
+def test_seed_publishes_faqs(salon):
     _seed()
     assert models.FaqItem.objects.filter(salon=salon, is_published=True).count() >= 6
-    assert models.Testimonial.objects.filter(salon=salon, is_published=True).count() >= 4
+
+
+def test_sample_testimonials_are_never_published_by_the_seed(salon):
+    """The seeded reviews are invented. Publishing them would put fake customer
+    opinions on a real business's site, so they exist only for layout testing
+    and stay unpublished until the owner replaces them with real ones."""
+    _seed()
+    assert models.Testimonial.objects.filter(salon=salon).count() >= 4
+    assert models.Testimonial.objects.filter(salon=salon, is_published=True).count() == 0
     assert all(1 <= r <= 5 for r in models.Testimonial.objects.values_list("rating", flat=True))
 
 

@@ -14,6 +14,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 
 import { CheckoutDrawer } from "@/components/checkout/checkout-drawer";
+import { BOOKING_ENABLED } from "@/lib/api";
 import { useCart } from "@/lib/cart";
 import { formatInr } from "@/lib/money";
 import { useQuote } from "@/lib/use-quote";
@@ -25,7 +26,10 @@ export function SelectionCart() {
   const { quote, loading, error } = useQuote(cart.lines);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
-  const visible = cart.hydrated && cart.lines.length > 0;
+  // BOOKING_ENABLED guards a stale cart too: a visitor can still hold items in
+  // localStorage from when this origin had working Add buttons, and pricing
+  // them on a preview with no API could only fail.
+  const visible = BOOKING_ENABLED && cart.hydrated && cart.lines.length > 0;
 
   return (
     <>
@@ -36,12 +40,14 @@ export function SelectionCart() {
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", stiffness: 260, damping: 30 }}
-            className="border-ink-700 bg-ink-900/95 fixed inset-x-0 bottom-0 z-30 border-t backdrop-blur"
+            className="fixed inset-x-0 bottom-0 z-30 px-3 pb-3 sm:px-4 sm:pb-4"
             aria-label="Your selection"
           >
-            <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            {/* A floating clay tray rather than a full-width strip: it reads as
+                something resting over the page, in the same idiom as the navbar. */}
+            <div className="clay mx-auto flex max-w-4xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-7 sm:py-4">
               <div className="min-w-0">
-                <p className="text-ivory-100 text-sm">
+                <p className="text-ink text-sm font-extrabold">
                   {cart.distinctCount} {cart.distinctCount === 1 ? "service" : "services"}{" "}
                   selected
                   {cart.totalUnits > cart.distinctCount
@@ -51,7 +57,7 @@ export function SelectionCart() {
 
                 <div className="mt-1 min-h-6">
                   {error ? (
-                    <p className="text-danger text-sm" role="alert">
+                    <p className="text-danger text-sm font-semibold" role="alert">
                       {error}
                     </p>
                   ) : quote ? (
@@ -72,20 +78,20 @@ export function SelectionCart() {
                   {/* aria-live so the total is announced when it changes, which
                       is the whole point of the bar for a screen-reader user. */}
                   <p
-                    className="text-ivory-50 text-xl font-medium tabular-nums"
+                    className="font-display text-ink text-2xl tabular-nums"
                     aria-live="polite"
                     aria-atomic="true"
                   >
                     {quote ? (
                       formatInr(quote.payable_paise)
                     ) : (
-                      <span className="text-ivory-500 text-base">
+                      <span className="text-ink-muted font-body text-base">
                         {loading ? "Pricing…" : "—"}
                       </span>
                     )}
                   </p>
                   {quote && quote.discount_paise > 0 ? (
-                    <p className="text-ivory-500 text-xs">
+                    <p className="text-ink-muted text-xs font-semibold">
                       <span className="line-through">
                         {formatInr(quote.subtotal_paise)}
                       </span>{" "}
@@ -98,7 +104,7 @@ export function SelectionCart() {
                   type="button"
                   onClick={() => setCheckoutOpen(true)}
                   disabled={!quote || loading}
-                  className="bg-gold-500 text-ink-950 hover:bg-gold-400 rounded-full px-6 py-3 text-sm font-medium whitespace-nowrap transition-colors disabled:opacity-50"
+                  className="clay-btn px-7 py-3.5 text-sm font-bold whitespace-nowrap"
                 >
                   Continue
                 </button>
@@ -109,7 +115,7 @@ export function SelectionCart() {
       </AnimatePresence>
 
       {/* Keeps the sticky bar from covering the last section's content. */}
-      {visible ? <div aria-hidden="true" className="h-28 sm:h-24" /> : null}
+      {visible ? <div aria-hidden="true" className="h-36 sm:h-28" /> : null}
 
       {/* Mounted only while open, so every checkout attempt starts with fresh
           form state and a fresh idempotency key instead of being reset by an

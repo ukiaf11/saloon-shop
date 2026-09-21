@@ -9,6 +9,7 @@
  */
 
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { CartProvider } from "@/lib/cart";
 import { describe, expect, it } from "vitest";
@@ -17,7 +18,7 @@ import type { BusinessHour, GalleryImage, Service, ServiceList } from "@/types/a
 
 import { FaqSection } from "../faq";
 import { GallerySection } from "../gallery";
-import { OpeningHoursSection } from "../opening-hours";
+import { OpeningHoursCard } from "../opening-hours";
 import { ServicesSection } from "../services";
 import { TestimonialsSection } from "../testimonials";
 
@@ -74,15 +75,17 @@ describe("ServicesSection", () => {
     expect(screen.getByText("1 hr 30 min")).toBeTruthy();
   });
 
-  it("groups under category headings and keeps heading order h2 -> h3 -> h4", () => {
+  it("keeps heading order h2 -> h3 with the category as a label, not a heading", () => {
+    // Categories are a filter now, so a card's category is a label above its
+    // name rather than a heading level between the section and the service.
     const { container } = render(
       <CartProvider>
         <ServicesSection services={serviceList()} />
       </CartProvider>,
     );
-    expect(container.querySelector("h2")?.textContent).toBe("Services");
-    expect(container.querySelector("h3")?.textContent).toBe("Hair");
-    expect(container.querySelector("h4")?.textContent).toBe("Hair Cutting");
+    expect(container.querySelector("h2")?.textContent).toBe("What we do best");
+    expect(container.querySelector("h3")?.textContent).toBe("Hair Cutting");
+    expect(container.querySelector("h4")).toBeNull();
   });
 
   it("promotes service names to h3 when there are no categories", () => {
@@ -142,7 +145,7 @@ describe("ServicesSection", () => {
   });
 });
 
-describe("OpeningHoursSection", () => {
+describe("OpeningHoursCard", () => {
   const week: BusinessHour[] = [
     {
       day_of_week: 0,
@@ -161,18 +164,18 @@ describe("OpeningHoursSection", () => {
   ];
 
   it("converts 24-hour times without touching Date or Intl", () => {
-    render(<OpeningHoursSection hours={week} />);
+    render(<OpeningHoursCard hours={week} />);
     expect(screen.getByText("10:00 AM – 9:00 PM")).toBeTruthy();
   });
 
   it("says Closed in words, not only in colour", () => {
-    render(<OpeningHoursSection hours={week} />);
+    render(<OpeningHoursCard hours={week} />);
     expect(screen.getByText("Closed")).toBeTruthy();
   });
 
   it("treats a day with no times as closed even when the flag disagrees", () => {
     render(
-      <OpeningHoursSection
+      <OpeningHoursCard
         hours={[
           {
             day_of_week: 2,
@@ -188,7 +191,7 @@ describe("OpeningHoursSection", () => {
   });
 
   it("prints the week in day order even if the payload is shuffled", () => {
-    const { container } = render(<OpeningHoursSection hours={[week[1], week[0]]} />);
+    const { container } = render(<OpeningHoursCard hours={[week[1], week[0]]} />);
     const days = [...container.querySelectorAll("dt")].map((node) => node.textContent);
     expect(days).toEqual(["Monday", "Sunday"]);
   });
@@ -230,6 +233,17 @@ describe("empty states", () => {
       "",
     );
   });
+
+  it("shows no gallery at all rather than stock photos passed off as the salon", () => {
+    // Filling an empty gallery with stock photography would present someone
+    // else's salon as this one. The navbar does not link to #gallery, so an
+    // absent section leaves no dead anchor.
+    expect(render(<GallerySection images={[]} />).container.innerHTML).toBe("");
+  });
+
+  it("renders no hours card when the week is unknown", () => {
+    expect(render(<OpeningHoursCard hours={[]} />).container.innerHTML).toBe("");
+  });
 });
 
 describe("FaqSection", () => {
@@ -268,5 +282,71 @@ describe("TestimonialsSection", () => {
       />,
     );
     expect(screen.getByText("Rated 4 out of 5")).toBeTruthy();
+  });
+});
+
+describe("ServiceBrowser filter", () => {
+  const hair = { id: "c1c1c1c1-1111-4111-8111-111111111111", name: "Hair", slug: "hair" };
+  const skin = { id: "c2c2c2c2-2222-4222-8222-222222222222", name: "Skin", slug: "skin" };
+  const list = serviceList({
+    categories: [
+      { ...hair, display_order: 1 },
+      { ...skin, display_order: 2 },
+    ],
+    results: [
+      service({
+        id: "a1a1a1a1-1111-4111-8111-111111111111",
+        name: "Hair Cutting",
+        category: hair,
+      }),
+      service({
+        id: "a2a2a2a2-2222-4222-8222-222222222222",
+        name: "Facial",
+        slug: "facial",
+        category: skin,
+      }),
+    ],
+  });
+
+  it("shows every service under All, and narrows on a category", async () => {
+    const user = userEvent.setup();
+    render(
+      <CartProvider>
+        <ServicesSection services={list} />
+      </CartProvider>,
+    );
+    expect(screen.getByText("Hair Cutting")).toBeTruthy();
+    expect(screen.getByText("Facial")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Skin" }));
+    expect(screen.queryByText("Hair Cutting")).toBeNull();
+    expect(screen.getByText("Facial")).toBeTruthy();
+  });
+
+  it("marks the active chip with aria-pressed", async () => {
+    const user = userEvent.setup();
+    render(
+      <CartProvider>
+        <ServicesSection services={list} />
+      </CartProvider>,
+    );
+    const all = screen.getByRole("button", { name: "All" });
+    const skinChip = screen.getByRole("button", { name: "Skin" });
+    expect(all.getAttribute("aria-pressed")).toBe("true");
+
+    await user.click(skinChip);
+    expect(skinChip.getAttribute("aria-pressed")).toBe("true");
+    expect(all.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("announces the count rather than making the whole list live", async () => {
+    const user = userEvent.setup();
+    render(
+      <CartProvider>
+        <ServicesSection services={list} />
+      </CartProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "Hair" }));
+    expect(screen.getByText("Showing 1 service")).toBeTruthy();
   });
 });

@@ -93,6 +93,8 @@ builds.
 | `GET /api/v1/orders/{id}` | Recover an order by its unguessable id |
 | `GET /api/v1/promotion/today` | Live campaign counters (safe aggregates only) |
 
+Photo credits: [`/credits`](frontend/src/app/credits/page.tsx), generated from `frontend/src/assets/photos/credits.json`.
+
 Response shapes are fixed by [API_CONTRACT_PHASE2.md](API_CONTRACT_PHASE2.md) and
 [API_CONTRACT_PHASE3.md](API_CONTRACT_PHASE3.md); the backend serializers and the
 frontend Zod schemas both answer to them.
@@ -101,7 +103,16 @@ frontend Zod schemas both answer to them.
 
 Two paths, and they are **not** equivalent.
 
-### Container images (the real one)
+### Railway (the real one — ready, awaiting plan upgrade)
+
+`scripts/railway_provision.py` creates the project, Postgres and Redis from
+Railway's official templates, the backend / worker / beat / frontend services, a
+media volume, domains and cross-wired CORS. Railway currently refuses new
+resources on the free plan. Once credits are added: allow Railway's GitHub app
+to read this repo, run the script with `RAILWAY_API_KEY`, then run the seed
+commands it prints. Railway's repo integration redeploys on every push.
+
+### Container images
 
 `cd-images.yml` builds both production images on every push to `main` and pushes
 them to GHCR:

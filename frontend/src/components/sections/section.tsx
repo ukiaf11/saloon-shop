@@ -11,33 +11,46 @@ import type { ReactNode } from "react";
 export function Section({
   id,
   title,
+  eyebrow,
   description,
+  align = "left",
   children,
 }: {
   id: string;
   title: string;
+  /** A short clay chip above the heading. */
+  eyebrow?: string;
   description?: string;
+  align?: "left" | "center";
   children: ReactNode;
 }) {
+  const centered = align === "center";
   return (
     <section
       id={id}
       aria-labelledby={`${id}-heading`}
-      // scroll-mt-16 clears the 4rem sticky navbar, so jumping to an anchor
-      // does not park the heading underneath it.
-      className="border-ink-800 scroll-mt-16 border-t px-4 py-14 sm:py-16"
+      // scroll-mt-28 clears the floating navbar, so jumping to an anchor does
+      // not park the heading underneath it.
+      className="scroll-mt-28 px-4 py-10 sm:py-14"
     >
       <div className="mx-auto max-w-6xl">
-        <h2
-          id={`${id}-heading`}
-          className="text-ivory-50 font-[family-name:var(--font-display-loaded)] text-2xl sm:text-3xl"
-        >
-          {title}
-        </h2>
-        {description ? (
-          <p className="text-ivory-500 mt-3 max-w-2xl text-sm">{description}</p>
-        ) : null}
-        <div className="mt-8">{children}</div>
+        <div className={centered ? "mx-auto max-w-2xl text-center" : "max-w-2xl"}>
+          {eyebrow ? (
+            <p className="clay-sm text-primary inline-block px-4 py-1.5 text-xs font-bold tracking-[0.14em] uppercase">
+              {eyebrow}
+            </p>
+          ) : null}
+          <h2
+            id={`${id}-heading`}
+            className={`font-display text-ink text-3xl leading-tight sm:text-4xl ${eyebrow ? "mt-4" : ""}`}
+          >
+            {title}
+          </h2>
+          {description ? (
+            <p className="text-ink-soft mt-3 text-base sm:text-lg">{description}</p>
+          ) : null}
+        </div>
+        <div className="mt-8 sm:mt-10">{children}</div>
       </div>
     </section>
   );

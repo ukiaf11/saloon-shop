@@ -89,6 +89,10 @@ FAQS = [
     ),
 ]
 
+# SAMPLE copy for layout and testing only. These are not real customers, so they
+# are seeded UNPUBLISHED: invented reviews on a real business's site misrepresent
+# what customers think, and misleading testimonials fall foul of consumer
+# protection rules on advertising. Publish real reviews through the admin.
 TESTIMONIALS = [
     (
         "Rahul S.",
@@ -170,7 +174,7 @@ class Command(BaseCommand):
                 defaults={
                     "rating": rating,
                     "body": body,
-                    "is_published": True,
+                    "is_published": False,
                     "display_order": order,
                 },
             )
