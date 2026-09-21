@@ -11,6 +11,8 @@ the real Redis, whatever it does.
 
 from __future__ import annotations
 
+import base64
+
 import pytest
 
 
@@ -39,10 +41,13 @@ def _test_encryption_key(settings):
     passes only on machines that happen to have a .env on disk -- which is how
     it passed locally and failed in CI.
 
-    A fixed key also keeps ciphertext reproducible within a run, and it is
-    obviously not a production value.
+    The key is derived from a readable literal rather than pasted as base64:
+    a base64 blob in the repo looks exactly like a leaked secret, and the
+    gitleaks scan in CI rightly flags it.
     """
-    settings.FIELD_ENCRYPTION_KEY = "c2Fsb29uLXRlc3Qta2V5LW5vdC1wcm9kdWN0aW9uISE="
+    settings.FIELD_ENCRYPTION_KEY = base64.urlsafe_b64encode(
+        b"saloon-test-key-not-production!!"  # exactly 32 bytes, as Fernet needs
+    ).decode()
 
 
 @pytest.fixture(autouse=True)

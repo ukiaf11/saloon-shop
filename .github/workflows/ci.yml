@@ -39,9 +39,6 @@ jobs:
       DJANGO_SECRET_KEY: ci-only-not-a-real-secret
       DATABASE_URL: postgres://salon:salon@localhost:5432/salon_test
       REDIS_URL: redis://localhost:6379/0
-      # Obviously non-production. The test suite sets its own key in
-      # conftest.py; this covers the management commands that run outside it.
-      FIELD_ENCRYPTION_KEY: c2Fsb29uLXRlc3Qta2V5LW5vdC1wcm9kdWN0aW9uISE=
 
     steps:
       - uses: actions/checkout@v4
