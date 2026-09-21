@@ -498,8 +498,9 @@ Repo variables `PUBLIC_API_BASE_URL`, `PUBLIC_MEDIA_HOSTNAME` and
 | Unused | Neon store `neon-violet-canvas` (iad1) | Created by the user before the region decision. Safe to delete |
 
 **How it runs.** Both projects are linked to `ukiaf11/saloon-shop`, and every
-push to `main` redeploys both. The backend skips preview builds
-(`ignoreCommand`) because a preview would migrate the production database. A
+push to `main` redeploys both. Only `main` deploys the backend
+(`git.deploymentEnabled`) because a preview would migrate the production
+database. A
 production build runs `backend/vercel_build.py`, which does `migrate` and
 `createcachetable` against `DATABASE_URL_UNPOOLED`. The cache is the database
 cache; there is no Redis. There is also no Celery. The only scheduled job is the
@@ -530,6 +531,12 @@ to the Vercel login page. A `vercel crons run` still reached Django, passed the
   route works: `POST /v1/storage/stores/{storeId}/connections`.
 - Creating a project does not trigger a build. The first deploy has to be
   `POST /v13/deployments` with a `gitSource`.
+- **Don't use `ignoreCommand` for this.** `[ "$VERCEL_ENV" != production ]`
+  cancelled a real production push (`target: production`, ref `main`), even
+  though the docs say the ignore step can read `VERCEL_ENV`. API-created
+  deploys skip the ignore step, so the manual deploys never caught it. The
+  declarative `git.deploymentEnabled: {"**": false, "main": true}` has no shell
+  and no env vars to go wrong.
 - Neon behind PgBouncer (transaction mode) needs `CONN_MAX_AGE=0` and
   `DISABLE_SERVER_SIDE_CURSORS=True`.
 - Historical logs: `vercel logs --since 3h --json`. The REST runtime-logs

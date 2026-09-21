@@ -118,9 +118,9 @@ on every push to `main` through Vercel's GitHub integration:
   direct `DATABASE_URL_UNPOOLED`.
 - **Backend build** (`backend/vercel_build.py`, wired through
   `[tool.vercel.scripts]` in `pyproject.toml`) runs `migrate` and
-  `createcachetable` on **production builds only**. Previews of the backend are
-  skipped (`ignoreCommand` in `backend/vercel.json`) because they would share
-  the production database. `SEED_ON_BUILD=1` seeds a fresh database once;
+  `createcachetable` on **production builds only**. Only `main` deploys the
+  backend (`git.deploymentEnabled` in `backend/vercel.json`), because a
+  preview would share the production database. `SEED_ON_BUILD=1` seeds a fresh database once;
   remove it afterwards.
 - **No Redis, no Celery on Vercel.** The cache is Django's database cache.
   The midnight rollover is a Vercel Cron (`0 19 * * *` UTC = 00:30 IST) calling

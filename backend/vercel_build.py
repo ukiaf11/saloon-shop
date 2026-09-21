@@ -3,9 +3,10 @@
 Runs via [tool.vercel.scripts] build, inside the build's venv, after
 `uv sync --no-dev` and before Vercel's Django hook.
 
-Production only. Preview builds are cancelled by vercel.json's ignoreCommand
-anyway, but this refuses on its own too, because a preview migrating the
-production database would be a silent, shared-state disaster.
+Production only. vercel.json's git.deploymentEnabled already stops branches
+other than main from deploying, but this refuses on its own too, because a
+preview migrating the production database would be a silent, shared-state
+disaster.
 """
 
 from __future__ import annotations
