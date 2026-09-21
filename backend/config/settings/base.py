@@ -164,8 +164,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "common.pagination.DefaultPagination",
     "PAGE_SIZE": 25,
     "EXCEPTION_HANDLER": "common.exceptions.api_exception_handler",
+    # Fails open if the cache is down -- see common/throttling.py for the trade.
     "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.ScopedRateThrottle",
+        "common.throttling.ResilientScopedRateThrottle",
     ],
     # Tuned against real traffic post-launch; these are the spec's starting
     # values (REQUIREMENTS.md 3.6).

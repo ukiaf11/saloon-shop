@@ -14,6 +14,19 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
-    # Local media serving only. In production, uploaded images are served from
-    # object storage and this branch never runs.
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+elif getattr(settings, "SERVE_MEDIA", False):
+    # `static()` is a no-op outside DEBUG, so production media needs the view
+    # mounted explicitly. See SERVE_MEDIA in settings/production.py for why this
+    # is acceptable here and when to replace it with object storage.
+    from django.urls import re_path
+    from django.views.static import serve
+
+    media_prefix = settings.MEDIA_URL.lstrip("/")
+    urlpatterns += [
+        re_path(
+            rf"^{media_prefix}(?P<path>.*)$",
+            serve,
+            {"document_root": settings.MEDIA_ROOT},
+        ),
+    ]
