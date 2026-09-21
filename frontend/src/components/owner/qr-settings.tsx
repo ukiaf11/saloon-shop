@@ -19,7 +19,8 @@ import type { PaymentSettings } from "@/types/owner";
 
 import { Field, inputClass, Notice, whenText } from "./ui";
 
-const MAX_BYTES = 5 * 1024 * 1024;
+// The server's limit, which sits under Vercel's 4.5 MB request cap.
+const MAX_BYTES = 4 * 1024 * 1024;
 
 export function QrSettingsPanel({
   token,
@@ -83,7 +84,7 @@ export function QrSettingsPanel({
       return;
     }
     if (file && file.size > MAX_BYTES) {
-      setError("That image is larger than 5 MB. Take a screenshot of the QR instead.");
+      setError("That image is larger than 4 MB. Take a screenshot of the QR instead.");
       return;
     }
     const form = new FormData();
@@ -180,7 +181,7 @@ export function QrSettingsPanel({
             <Field
               id={ids.file}
               label={settings.qr ? "Replace QR image" : "QR image"}
-              hint="A clear screenshot or photo of your UPI QR (PNG, JPEG or WebP, up to 5 MB)."
+              hint="A clear screenshot or photo of your UPI QR (PNG, JPEG or WebP, up to 4 MB)."
             >
               <input
                 key={fileInputKey}

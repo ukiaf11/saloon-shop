@@ -62,6 +62,10 @@ UPI_REFERENCE = re.compile(r"^\d{12}$")
 # provider part is letters and digits (okaxis, ybl, paytm, ...).
 UPI_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,99}@[A-Za-z][A-Za-z0-9]{1,63}$")
 QR_MAX_SIDE = 1200
+# Below the general 5 MB image limit on purpose: Vercel refuses request bodies
+# over 4.5 MB before they reach Django, so a larger upload would fail with a
+# bare 413 instead of this message.
+QR_MAX_BYTES = 4 * 1024 * 1024
 
 
 class UpiPaymentsUnavailable(ConflictError):
@@ -129,6 +133,10 @@ def normalise_qr_image(upload) -> tuple[bytes, int, int]:
     """
     from PIL import Image, ImageOps
 
+    if (getattr(upload, "size", 0) or 0) > QR_MAX_BYTES:
+        raise DjangoValidationError(
+            "The QR image must be 4 MB or smaller. A screenshot works best."
+        )
     validate_image_file(upload)
     upload.seek(0)
     with Image.open(upload) as source:

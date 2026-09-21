@@ -186,7 +186,8 @@ Fields: `password` (required every time: this decides where customers' money
 goes), `qr_image` (file), `remove_qr` (`true`), `upi_id`, `payee_name`. Absent
 fields are left unchanged; `upi_id=""` clears it.
 
-- The image must be PNG, JPEG, WebP or AVIF, at most 5 MB, and between
+- The image must be PNG, JPEG, WebP or AVIF, at most **4 MB** (Vercel refuses
+  request bodies over 4.5 MB before they reach Django), and between
   200×200 and 6000×6000 pixels. It is re-encoded to PNG, EXIF-rotated,
   flattened onto white (a transparent QR would otherwise turn black), and
   scaled down to at most 1200 px. Metadata does not survive.

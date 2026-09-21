@@ -131,6 +131,17 @@ def test_non_images_are_rejected(client, salon, owner_auth, name, content, conte
     assert not PaymentSettings.objects.filter(qr_sha256__gt="").exists()
 
 
+def test_an_image_over_4_mb_is_rejected_before_decoding(client, salon, owner_auth):
+    """Vercel drops bodies over 4.5 MB before Django sees them, so the limit is
+    4 MB and says why, rather than failing later with a bare 413."""
+    oversized = SimpleUploadedFile(
+        "qr.png", b"\0" * (4 * 1024 * 1024 + 1), content_type="image/png"
+    )
+    r = put(client, owner_auth, qr_image=oversized)
+    assert r.status_code == 400
+    assert "4 MB" in r.json()["error"]["message"]
+
+
 def test_a_tiny_image_is_rejected(client, salon, owner_auth):
     assert put(client, owner_auth, qr_image=png_upload(size=(50, 50))).status_code == 400
 
