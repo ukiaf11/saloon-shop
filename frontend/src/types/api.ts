@@ -17,8 +17,15 @@ export const readinessSchema = z.object({
 });
 export type Readiness = z.infer<typeof readinessSchema>;
 
-/** GET /promotion/today -- the only campaign numbers safe to expose publicly. */
+/**
+ * GET /promotion/today -- the only campaign numbers safe to expose publicly.
+ *
+ * Note what is absent and must stay absent: the seed, its commitment, and the
+ * winning positions. If a field resembling any of those ever appears here,
+ * something upstream is leaking a result that has not happened yet.
+ */
 export const promotionTodaySchema = z.object({
+  campaign_date: z.string(),
   capacity: z.number().int().nonnegative(),
   paid_count: z.number().int().nonnegative(),
   slots_remaining: z.number().int().nonnegative(),
@@ -28,6 +35,7 @@ export const promotionTodaySchema = z.object({
   discount_percent: z.number().int().min(0).max(100),
   min_distinct_services: z.number().int().positive(),
   is_open: z.boolean(),
+  status: z.enum(["SCHEDULED", "ACTIVE", "CLOSED"]),
 });
 export type PromotionToday = z.infer<typeof promotionTodaySchema>;
 

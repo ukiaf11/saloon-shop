@@ -85,3 +85,163 @@ class CampaignConfig(UUIDTimestampedModel):
     @property
     def reward_service_slugs(self) -> list[str]:
         return list(self.reward_definition.get("service_slugs", []))
+
+
+class CampaignStatus(models.TextChoices):
+    SCHEDULED = "SCHEDULED", "Scheduled"
+    ACTIVE = "ACTIVE", "Active"
+    CLOSED = "CLOSED", "Closed"
+
+
+class DailyCampaign(UUIDTimestampedModel):
+    """One immutable day of the promotion.
+
+    Created once per salon per date and never reset -- yesterday's record is
+    history, not scratch space (Doc 1 section 3.3). The row is also the
+    concurrency anchor: capacity admission locks it with SELECT ... FOR UPDATE,
+    so the last slot cannot be sold twice.
+
+    The seed and the winning positions are encrypted at rest and must never
+    appear in an API response, a serializer, a log line or an admin screen.
+    `seed_commitment` is the one public artefact: it proves after the fact that
+    the positions were fixed before anyone played.
+    """
+
+    salon = models.ForeignKey(
+        "salons.Salon", on_delete=models.PROTECT, related_name="daily_campaigns"
+    )
+    config = models.ForeignKey(
+        CampaignConfig, on_delete=models.PROTECT, related_name="daily_campaigns"
+    )
+    campaign_date = models.DateField()
+
+    # Snapshotted from the config at creation. Reading them off the live config
+    # later would let a settings change rewrite a day that has already run.
+    capacity = models.PositiveIntegerField()
+    lucky_count = models.PositiveIntegerField()
+    discount_percent = models.PositiveSmallIntegerField()
+    min_distinct_services = models.PositiveSmallIntegerField()
+    reward_snapshot = models.JSONField(default=dict)
+
+    status = models.CharField(
+        max_length=16, choices=CampaignStatus.choices, default=CampaignStatus.ACTIVE
+    )
+
+    seed_commitment = models.CharField(max_length=64)
+    #: Fernet tokens. NEVER serialized. See common.crypto.
+    encrypted_seed = models.TextField()
+    encrypted_winning_positions = models.TextField()
+
+    paid_count = models.PositiveIntegerField(default=0)
+    winner_count = models.PositiveIntegerField(default=0)
+
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "daily_campaign"
+        ordering = ["-campaign_date"]
+        constraints = [
+            # The single most important constraint in the app: it is what makes
+            # both the scheduled task and the lazy fallback safe to race.
+            models.UniqueConstraint(
+                fields=["salon", "campaign_date"], name="uniq_daily_campaign_salon_date"
+            ),
+            models.CheckConstraint(
+                check=models.Q(capacity__gt=0), name="ck_daily_campaign_capacity_positive"
+            ),
+            models.CheckConstraint(
+                check=models.Q(lucky_count__lte=models.F("capacity")),
+                name="ck_daily_campaign_lucky_within_capacity",
+            ),
+            models.CheckConstraint(
+                check=models.Q(paid_count__lte=models.F("capacity")),
+                name="ck_daily_campaign_paid_within_capacity",
+            ),
+            models.CheckConstraint(
+                check=models.Q(winner_count__lte=models.F("lucky_count")),
+                name="ck_daily_campaign_winners_within_lucky_count",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.salon_id} {self.campaign_date} ({self.paid_count}/{self.capacity})"
+
+    @property
+    def is_locked(self) -> bool:
+        """True once someone has paid: today's settings become immutable.
+
+        Changing capacity or winner count mid-day would make the draw
+        challengeable, so edits after this point apply from the next date
+        (Doc 2 section 18).
+        """
+        return self.paid_count > 0
+
+    @property
+    def slots_remaining(self) -> int:
+        return max(self.capacity - self.paid_count, 0)
+
+    @property
+    def winners_remaining(self) -> int:
+        return max(self.lucky_count - self.winner_count, 0)
+
+
+class ReservationStatus(models.TextChoices):
+    ACTIVE = "ACTIVE", "Active"
+    CONSUMED = "CONSUMED", "Consumed"
+    EXPIRED = "EXPIRED", "Expired"
+    CANCELLED = "CANCELLED", "Cancelled"
+
+
+class SlotReservation(UUIDTimestampedModel):
+    """A temporary hold on one of the day's slots.
+
+    Without it, five people reaching checkout when one slot remains would all
+    see it available and all pay (Doc 2 section 6). A reservation is taken under
+    the campaign row lock, expires if payment does not follow, and is consumed
+    when it does.
+    """
+
+    daily_campaign = models.ForeignKey(
+        DailyCampaign, on_delete=models.CASCADE, related_name="reservations"
+    )
+    order = models.OneToOneField(
+        "orders.Order",
+        on_delete=models.CASCADE,
+        related_name="slot_reservation",
+        null=True,
+        blank=True,
+    )
+    customer = models.ForeignKey(
+        "customers.Customer",
+        on_delete=models.PROTECT,
+        related_name="slot_reservations",
+        null=True,
+        blank=True,
+    )
+
+    status = models.CharField(
+        max_length=16, choices=ReservationStatus.choices, default=ReservationStatus.ACTIVE
+    )
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "slot_reservation"
+        indexes = [
+            # The hot path: counting live holds for a campaign. Partial, because
+            # consumed and expired rows accumulate forever and are never counted.
+            models.Index(
+                fields=["daily_campaign"],
+                condition=models.Q(status="ACTIVE"),
+                name="ix_slot_reservation_active",
+            ),
+            models.Index(fields=["status", "expires_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.status} until {self.expires_at:%H:%M}"
+
+    @property
+    def is_live(self) -> bool:
+        from django.utils import timezone
+
+        return self.status == ReservationStatus.ACTIVE and self.expires_at > timezone.now()

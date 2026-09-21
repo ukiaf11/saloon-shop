@@ -9,6 +9,7 @@
  */
 
 import { FaqSection } from "@/components/sections/faq";
+import { CampaignSection } from "@/components/sections/campaign";
 import { GallerySection } from "@/components/sections/gallery";
 import { HowItWorksSection } from "@/components/sections/how-it-works";
 import { LocationSection } from "@/components/sections/location";
@@ -128,16 +129,15 @@ export default async function Home() {
         </p>
       </section>
 
-      {/* Phase 4 mounts CampaignProgressCard here (live slots and winners, from
-          GET /promotion/today). The anchor exists now so the id does not move
-          under anyone later. */}
-      <div id="campaign" className="scroll-mt-16" />
+      {/* Live counters from GET /promotion/today. Client-rendered and polled,
+          because a baked-in slot count goes stale the moment anyone books. */}
+      <CampaignSection />
 
       <ServicesSection services={services} />
 
-      {/* Phase 3: the discount reveal fires when the second distinct service is
-          selected. It needs the selection state that Phase 3 introduces, so
-          nothing is rendered for it yet -- see IMPLEMENTATION_PLAN.md. */}
+      {/* The discount reveal lives in the sticky selection bar (mounted in the
+          root layout), so it follows the customer down the page rather than
+          sitting in one section. */}
 
       <HowItWorksSection />
 

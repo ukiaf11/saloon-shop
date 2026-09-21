@@ -7,7 +7,7 @@
 Mobile-first salon website with a daily lucky-slot campaign, online payment, QR
 coupons and a role-based admin panel.
 
-**Status:** Phases 1–3 complete (foundation, catalog & content, quote & orders). See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+**Status:** Phases 1–4 complete (foundation; catalog & content; quote & orders; daily campaign & lucky engine). See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 | Document | Contents |
 |---|---|
@@ -91,6 +91,7 @@ builds.
 | `POST /api/v1/orders/quote` | Server-side pricing preview (advisory) |
 | `POST /api/v1/orders` | Create an order with snapshotted prices |
 | `GET /api/v1/orders/{id}` | Recover an order by its unguessable id |
+| `GET /api/v1/promotion/today` | Live campaign counters (safe aggregates only) |
 
 Response shapes are fixed by [API_CONTRACT_PHASE2.md](API_CONTRACT_PHASE2.md) and
 [API_CONTRACT_PHASE3.md](API_CONTRACT_PHASE3.md); the backend serializers and the
@@ -170,5 +171,11 @@ These are load-bearing. The full list is in [memory.md](memory.md) §5.
 9. **Order status changes only through `Order.transition_to()`.** The transition
    table in `apps/orders/state.py` is the whole state machine; an edge that is not
    in it raises rather than being written.
-10. **The cart holds no money.** `frontend/src/lib/cart.tsx` stores service ids and
+10. **Winning positions and the campaign seed never leave the server.** They are
+   encrypted at rest with `common/crypto.py`, and `tests/test_no_secret_leaks.py`
+   fails the build if a serializer, view or new caller touches them.
+11. **Capacity is only ever taken through `reserve_slot()`**, which holds a row
+   lock on the campaign for the whole check-and-insert. Anything that counts
+   slots without that lock will oversell.
+12. **The cart holds no money.** `frontend/src/lib/cart.tsx` stores service ids and
    quantities only — every rupee on screen comes from the server quote.

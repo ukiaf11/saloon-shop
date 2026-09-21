@@ -150,7 +150,7 @@ deliberately left out here as an additive migration later.
 
 ---
 
-## Phase 4 — Daily campaign & lucky engine (5–6 days) ⚠️ high risk
+## Phase 4 — Daily campaign & lucky engine (5–6 days) ✅ COMPLETE 2026-09-21
 
 **Backend**
 - [ ] `CampaignConfig` (append-only, `effective_from`) + `DailyCampaign` with unique `(salon_id, campaign_date)`.
@@ -179,6 +179,14 @@ deliberately left out here as an additive migration later.
 - [ ] No API response or serializer anywhere leaks winning positions (assert by scanning responses).
 
 **Done when:** the concurrency test passes repeatedly under load, and a grep for winning-position fields across all serializers returns nothing.
+
+**Outcome:** both gates pass. 20 real threads racing for the last slot admit
+exactly one; 30 threads against 10 slots admit exactly 10; 12 threads racing to
+provision produce one campaign row. The leak guard is a test, not a grep: it
+scans every serializer and view for the secret fields, pins down who may call
+`decrypt_winning_positions`, and checks the rendered page. The draw uses
+HMAC-SHA256 ordering rather than `random.sample`, so it stays reproducible
+across Python versions — an auditor can re-derive any past day in any language.
 
 ---
 

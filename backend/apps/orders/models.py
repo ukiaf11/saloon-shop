@@ -28,10 +28,16 @@ class Order(UUIDTimestampedModel):
     customer = models.ForeignKey(
         "customers.Customer", on_delete=models.PROTECT, related_name="orders"
     )
-    # NOTE: `daily_campaign` (FK to promotions.DailyCampaign) is added in Phase 4,
-    # when that model exists. It is deliberately absent rather than stubbed --
-    # an additive migration later is cheaper than a placeholder table now.
-    #
+    # The day this order belongs to. Nullable because an order is created
+    # before capacity is reserved, and because a purchase that does not enter
+    # the campaign legitimately has none.
+    daily_campaign = models.ForeignKey(
+        "promotions.DailyCampaign",
+        on_delete=models.PROTECT,
+        related_name="orders",
+        null=True,
+        blank=True,
+    )
     # The configuration that priced this order. Kept so the discount can be
     # justified months later without guessing which settings were in force.
     campaign_config = models.ForeignKey(

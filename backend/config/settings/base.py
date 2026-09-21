@@ -192,6 +192,13 @@ from corsheaders.defaults import default_headers  # noqa: E402
 CORS_ALLOW_HEADERS = (*default_headers, "idempotency-key")
 
 
+# --- Field encryption -----------------------------------------------------
+
+# Protects the daily campaign seed and winning positions at rest. Outside DEBUG
+# this must be set, or common.crypto refuses to run -- see that module.
+FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
+
+
 # --- Business defaults ----------------------------------------------------
 
 CAMPAIGN_RESERVATION_TTL_SECONDS = env.int("CAMPAIGN_RESERVATION_TTL_SECONDS", default=600)

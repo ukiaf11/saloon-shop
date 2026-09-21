@@ -16,4 +16,6 @@ urlpatterns = [
     path("", include("apps.content.urls")),
     # Phase 3 -- quote and order engine.
     path("", include("apps.orders.urls")),
+    # Phase 4 -- daily campaign.
+    path("", include("apps.promotions.urls")),
 ]

@@ -35,8 +35,18 @@ SENSITIVE_KEY_PARTS = (
 )
 
 
+#: Keys that match a sensitive substring but are safe, and useful, to log.
+#: `seed_commitment` is a SHA256 hash published precisely so a result can be
+#: verified later -- it reveals nothing about the seed. Keep this list tiny and
+#: justify every entry; it is easier to add one key here than to weaken the
+#: denylist and leak something else.
+PUBLIC_KEY_EXCEPTIONS = frozenset({"seed_commitment"})
+
+
 def is_sensitive_key(key: str) -> bool:
     lowered = key.lower()
+    if lowered in PUBLIC_KEY_EXCEPTIONS:
+        return False
     return any(part in lowered for part in SENSITIVE_KEY_PARTS)
 
 

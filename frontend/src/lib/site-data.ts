@@ -41,6 +41,7 @@ import type { z } from "zod";
 import { ApiError, apiRequest } from "@/lib/api";
 import {
   faqListSchema,
+  promotionTodaySchema,
   gallerySchema,
   legalPageSchema,
   salonSchema,
@@ -50,6 +51,7 @@ import {
   type GalleryImage,
   type LegalPage,
   type LegalPageSlug,
+  type PromotionToday,
   type Salon,
   type ServiceList,
   type Testimonial,
@@ -61,6 +63,7 @@ import {
  * `revalidateTag` calls share one spelling instead of two string literals.
  */
 export const CACHE_TAGS = {
+  promotion: "promotion",
   salon: "salon",
   services: "services",
   gallery: "gallery",
@@ -123,6 +126,26 @@ export async function getServices(): Promise<ServiceList> {
       results: [],
     }
   );
+}
+
+/**
+ * Today's campaign counters.
+ *
+ * Deliberately NOT cached: these change with every payment, and a stale count
+ * is exactly what makes a customer believe a slot is free when it is not. The
+ * backend does not cache this endpoint either.
+ */
+export async function getPromotionToday(): Promise<PromotionToday | null> {
+  try {
+    return await apiRequest("/promotion/today", promotionTodaySchema, {
+      credentials: "omit",
+      timeoutMs: READ_TIMEOUT_MS,
+      cache: "no-store",
+    });
+  } catch (error) {
+    console.error(`[site-data] /promotion/today unavailable: ${describeFailure(error)}`);
+    return null;
+  }
 }
 
 export async function getGallery(): Promise<GalleryImage[]> {

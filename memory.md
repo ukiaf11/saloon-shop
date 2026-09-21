@@ -3,7 +3,7 @@
 > Working memory for this project. Read this first at the start of a session; update it at the end of one.
 > Keep it short and current — it is a state file, not a log archive. Details live in the docs it points to.
 
-**Last updated:** 2026-09-21 (Phase 3 complete)
+**Last updated:** 2026-09-21 (Phase 4 complete)
 
 ---
 
@@ -21,7 +21,7 @@ The hard requirement underneath all of it: **every money and promotion decision 
 
 | | |
 |---|---|
-| **Phase** | ✅ Phases 1–3 complete (foundation; catalog & content; quote & orders). Phase 4 (daily campaign & lucky engine) is next. |
+| **Phase** | ✅ Phases 1–4 complete. Phase 5 (payments) is next — **blocked on Razorpay test keys**. |
 | **Code** | `backend/` (Django 5 + DRF, uv-managed) and `frontend/` (Next 16, TS, Tailwind 4) both boot, migrate and pass their checks. |
 | **Repo** | <https://github.com/ukiaf11/saloon-shop> (**public**), branch `main`. CI, container images and Pages all green. |
 | **Specs** | Three source documents (see §3). |
@@ -29,7 +29,7 @@ The hard requirement underneath all of it: **every money and promotion decision 
 | **Engineering blockers** | None until Phase 4 (needs the wording decision) and Phase 5 (needs Razorpay keys). |
 | **Business track** | Owner to approve "5 Lucky Slots"; promotion/refund rules need drafting for legal. |
 
-**Verified working:** `docker compose` Postgres + Redis, migrations, all three seed commands, `/healthz` + `/api/v1/readiness`, Celery round-trip, JSON log redaction, CORS allowlist, image upload validation (rejects disguised non-images and SVG), the six public read endpoints against the contract, the public page rendering real seeded data with full JSON-LD, the Next image optimizer on API-served media. **222 tests pass** (169 backend, 53 frontend); ruff + eslint + tsc + prettier + `check --deploy` all clean.
+**Verified working:** `docker compose` Postgres + Redis, migrations, all three seed commands, `/healthz` + `/api/v1/readiness`, Celery round-trip, JSON log redaction, CORS allowlist, image upload validation (rejects disguised non-images and SVG), the six public read endpoints against the contract, the public page rendering real seeded data with full JSON-LD, the Next image optimizer on API-served media. **284 tests pass** (231 backend, 53 frontend); ruff + eslint + tsc + prettier + `check --deploy` all clean.
 
 **Not yet measured:** Lighthouse mobile score (Phase 2 exit gate names it; needs a real device/CI run).
 
@@ -289,20 +289,76 @@ Both were CORS, and both only appear in a real browser:
 The lesson worth keeping: any new custom request header needs a
 `CORS_ALLOW_HEADERS` entry, or it fails only in the browser.
 
-## 12. Next actions
+## 12. What Phase 4 built
 
-**Engineering — start Phase 4 (daily campaign & lucky engine):** `DailyCampaign`
-with unique `(salon_id, campaign_date)`; the 256-bit seed, commitment hash and
-deterministic winning-position sampling; `SlotReservation` + `CapacityGuard`
-under `SELECT ... FOR UPDATE`; scheduled **and** lazy campaign provisioning; the
-`Order.daily_campaign` FK. Exit gates: 20 simultaneous checkouts at
-`paid=39, capacity=40` admit exactly one, and no serializer anywhere leaks a
-winning position.
+```
+backend/common/crypto.py       Fernet field encryption. Production REFUSES to
+                               run without FIELD_ENCRYPTION_KEY; DEBUG derives
+                               one from SECRET_KEY for convenience.
+backend/apps/promotions/
+  lucky.py                     seed -> commitment -> positions. Pure, no ORM.
+  models.py                    DailyCampaign (the lock anchor), SlotReservation
+  services.py                  provision_campaign, reserve_slot, close_campaign,
+                               public_progress (the allowlist)
+  views.py/urls.py             GET /promotion/today
+tasks/campaigns.py             midnight rollover + reservation expiry
+tests/test_no_secret_leaks.py  static guard over every serializer and view
+frontend/src/components/sections/campaign.tsx  live counters, polled
+```
 
-⚠️ **Blocked on the owner before Phase 4 starts:** the "5 Lucky Slots" wording.
-If they insist on exactly 5 real winners daily, Phase 4 must be built around an
-end-of-day draw instead of immediate reveal — a different architecture, not a
-copy change.
+### The decisions that matter
+
+- **HMAC-SHA256 ordering, not `random.sample`.** Positions are chosen by sorting
+  1..N on `HMAC(seed, i)`. `random.sample` is seeded-deterministic but its
+  algorithm is a CPython implementation detail — a Python upgrade could silently
+  make every past campaign unverifiable. HMAC is specified, stable forever, and
+  an auditor can re-derive any day in ten lines of any language.
+- **The commitment binds every parameter** (seed, salon, date, capacity,
+  lucky_count). Without that, someone could later claim the same seed was drawn
+  for a different capacity — which would mean different positions.
+- **`seed_commitment` is exempt from log redaction** (`common/masking.py`
+  `PUBLIC_KEY_EXCEPTIONS`). It is a hash published precisely so results can be
+  verified; redacting it made the audit trail useless for no security gain.
+  Keep that exception list tiny.
+- **Capacity counts `paid_count + live reservations`** under a
+  `SELECT ... FOR UPDATE` on the campaign row. Counting paid alone would promise
+  the last slot to everyone still paying for it.
+- **Provisioning is idempotent by unique constraint, not by checking first.**
+  The midnight task and the first visitor of the day *will* race; one INSERT
+  wins and the loser re-reads.
+- **`/promotion/today` is not cached** on either side. A stale count makes a
+  customer believe a slot is free when it is not.
+
+### Exit gates, both passing
+
+- 20 threads racing for the last slot → exactly 1 admitted. 30 threads against
+  10 slots → exactly 10. 12 threads provisioning → 1 campaign row.
+- `tests/test_no_secret_leaks.py` scans serializers and views for the secret
+  fields, pins down who may call `decrypt_winning_positions`, and asserts the
+  view cannot build its own payload around `public_progress`.
+
+### Carried into Phase 6
+
+`decrypt_winning_positions()` currently has no caller. Phase 6's lucky decision
+will be the first, and `tests/test_no_secret_leaks.py` must be updated to allow
+it — deliberately, so adding a caller is a conscious act.
+
+## 13. Next actions
+
+**Engineering — Phase 5 (payments), blocked on Razorpay test keys.** Provider
+abstraction, `PaymentGatewayConfig` storing secret *references* only, payment
+create/verify, the webhook with `UNIQUE (provider, gateway_event_id)` as the
+idempotency mechanism, and the reconciliation job. Exit gate: three identical
+`payment.captured` webhooks produce exactly one payment record.
+
+Phase 3 and 4 left two seams Phase 5 must connect: an order is created but
+nothing reserves a slot for it yet, and `Order.daily_campaign` is never
+populated. Reserving at payment-create time (not order-create) is the right
+place — a hold taken before the customer commits would burn capacity on
+abandoned baskets.
+
+✅ **Resolved 2026-09-21:** the owner confirmed **"5 Lucky Slots" with immediate
+reveal**. The end-of-day-draw alternative is off the table.
 
 **Business — unblock Phase 4:** get the "5 Lucky Slots" wording signed off.
 
@@ -312,7 +368,7 @@ copy change.
 gitleaks guards commits before they leave the machine (CI scans too, but that is
 after the fact).
 
-## 13. Repo, CI and deployment
+## 14. Repo, CI and deployment
 
 **Repo:** <https://github.com/ukiaf11/saloon-shop>, public, `main`.
 
