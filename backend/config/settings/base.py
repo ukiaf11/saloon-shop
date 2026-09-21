@@ -67,8 +67,9 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "config.urls"
+# WSGI only, deliberately. Vercel serves the ASGI app whenever ASGI_APPLICATION
+# is set, with no reliable override, and nothing here needs ASGI.
 WSGI_APPLICATION = "config.wsgi.application"
-ASGI_APPLICATION = "config.asgi.application"
 
 TEMPLATES = [
     {

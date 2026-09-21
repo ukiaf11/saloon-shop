@@ -1,0 +1,13 @@
+# Only consulted by CLI deploys; Git deploys already exclude untracked files.
+# The .env rules matter most: settings call read_env() on backend/.env, which
+# would otherwise fill in local secrets and localhost URLs in production.
+.env
+.env.*
+!.env.example
+.venv
+media
+staticfiles
+tests
+.pytest_cache
+.hypothesis
+.ruff_cache

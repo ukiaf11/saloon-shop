@@ -43,3 +43,6 @@ npm-debug.log*
 dist/
 build/
 coverage/
+
+# Vercel CLI link state
+.vercel/

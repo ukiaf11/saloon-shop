@@ -36,6 +36,14 @@ dev = [
 
 [tool.uv]
 default-groups = ["dev"]
+# An application, not a library: without this uv also builds and installs the
+# project as a wheel, putting a second copy of every app into site-packages.
+package = false
+
+# Vercel runs this after `uv sync --no-dev`, inside the venv, before the
+# Django hook. It migrates the production database -- see vercel_build.py.
+[tool.vercel.scripts]
+build = "python vercel_build.py"
 
 [build-system]
 requires = ["hatchling"]

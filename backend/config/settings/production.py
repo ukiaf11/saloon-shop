@@ -3,10 +3,24 @@ from .base import *
 DEBUG = False
 
 SECRET_KEY = env("DJANGO_SECRET_KEY")
-ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
-# Railway's healthcheck calls the container with this Host header. Without it
-# Django answers 400 and the platform marks every deploy as failed.
-ALLOWED_HOSTS += ["healthcheck.railway.app"]
+
+# Vercel sets VERCEL=1 in both the build and the runtime.
+ON_VERCEL = env.bool("VERCEL", default=False)
+
+ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
+if ON_VERCEL:
+    # The production alias and this deployment's own URL. Both are injected by
+    # the platform, so a preview or a promoted deployment answers without a
+    # settings change. Never a "*.vercel.app" wildcard: anyone can register a
+    # look-alike subdomain there.
+    for _var in ("VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_URL", "VERCEL_BRANCH_URL"):
+        _host = env(_var, default="").strip()
+        if _host and _host not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(_host)
+if not ALLOWED_HOSTS:
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS is empty; refusing to serve any host.")
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS")
 CORS_ALLOW_CREDENTIALS = True
@@ -16,9 +30,9 @@ CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS")
 
 SECURE_SSL_REDIRECT = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-# Platform healthchecks call the container over plain HTTP from inside the
-# network. Redirecting them to HTTPS returns a 301, which the platform reads as
-# unhealthy. Only the dependency-free liveness probe is exempt.
+# Container platforms probe health over plain HTTP from inside their network;
+# a 301 there reads as unhealthy. Only the dependency-free liveness probe is
+# exempt. (On Vercel every request already arrives as HTTPS.)
 SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
@@ -49,8 +63,50 @@ REST_FRAMEWORK = {
 # of images; moving to S3/R2 later is a settings change, not a code change.
 # Django refuses to serve media outside DEBUG by default, so this is an
 # explicit, documented choice rather than an accident.
-SERVE_MEDIA = env.bool("SERVE_MEDIA", default=True)
+# Off on Vercel: its function filesystem is read-only and per-instance, so an
+# upload could never be served back. Uploads arrive with the admin phase and
+# will need object storage (Vercel Blob or R2) then.
+SERVE_MEDIA = env.bool("SERVE_MEDIA", default=not ON_VERCEL)
 MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
+
+# --- Serverless database and cache ------------------------------------------
+
+if ON_VERCEL:
+    _db = DATABASES["default"]
+    # Each invocation opens its own connection. Keeping one open across
+    # requests leaks: a suspended instance never runs its idle timeout, and
+    # Neon drops connections when its compute scales to zero.
+    _db["CONN_MAX_AGE"] = 0
+    _db["CONN_HEALTH_CHECKS"] = True
+    # DATABASE_URL is Neon's PgBouncer pooler in transaction mode. Row locks
+    # (SELECT ... FOR UPDATE) are fine there -- a transaction keeps one server
+    # connection -- but server-side cursors outlive a transaction and break.
+    _db["DISABLE_SERVER_SIDE_CURSORS"] = True
+    # Neon refuses plaintext connections; guard against a URL without sslmode.
+    _db.setdefault("OPTIONS", {}).setdefault("sslmode", "require")
+
+# Redis when one is configured; otherwise Django's database cache on Postgres.
+# NOT the in-memory cache: that is per instance, so a price change would clear
+# only the instance that handled it while others served the stale price for up
+# to 15 minutes, and throttle limits would multiply with instance count. The
+# table is created by `createcachetable` in vercel_build.py.
+_redis_url = env("REDIS_URL", default="").strip()
+if _redis_url:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": _redis_url,
+        }
+    }
+elif ON_VERCEL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+            "LOCATION": "django_cache",
+            # The default of 300 would cull throttle histories under load.
+            "OPTIONS": {"MAX_ENTRIES": 10000},
+        }
+    }
 
 # --- Error monitoring -----------------------------------------------------
 

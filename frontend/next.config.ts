@@ -14,6 +14,14 @@ import type { NextConfig } from "next";
  * the lucky campaign and the admin panel all need the Django API and a server.
  */
 const isStaticExport = process.env.NEXT_OUTPUT_EXPORT === "1";
+const onVercel = process.env.VERCEL === "1";
+
+// NEXT_PUBLIC_API_BASE_URL is inlined into the browser bundle at build time.
+// On Vercel a build that starts before the variable exists would silently ship
+// a bundle calling localhost:8000; failing the build is the better outcome.
+if (onVercel && !process.env.NEXT_PUBLIC_API_BASE_URL?.trim()) {
+  throw new Error("NEXT_PUBLIC_API_BASE_URL must be set for a Vercel build.");
+}
 
 // GitHub project pages serve from /<repo>, so every asset and link needs that
 // prefix. A user/org page (<user>.github.io) serves from the root and must
@@ -21,7 +29,8 @@ const isStaticExport = process.env.NEXT_OUTPUT_EXPORT === "1";
 const basePath = process.env.NEXT_BASE_PATH ?? "";
 
 const nextConfig: NextConfig = {
-  output: isStaticExport ? "export" : "standalone",
+  // Vercel builds Next natively; "standalone" is for self-hosting in Docker.
+  output: isStaticExport ? "export" : onVercel ? undefined : "standalone",
   reactStrictMode: true,
   poweredByHeader: false,
 

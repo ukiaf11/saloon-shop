@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "ignoreCommand": "[ \"$VERCEL_ENV\" != production ]",
+  "crons": [
+    {
+      "path": "/api/v1/internal/cron/daily-rollover",
+      "schedule": "0 19 * * *"
+    }
+  ]
+}

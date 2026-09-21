@@ -3,7 +3,11 @@ import os
 from celery import Celery
 from celery.schedules import crontab
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.local")
+# Production by default, matching wsgi.py. config/__init__ imports this module
+# BEFORE wsgi.py runs, so a "local" default here won: an unset
+# DJANGO_SETTINGS_MODULE silently booted with DEBUG=True and ALLOWED_HOSTS=["*"].
+# Local tools (manage.py, pytest.ini, compose env_file) all set it explicitly.
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.production")
 
 app = Celery("salon")
 app.config_from_object("django.conf:settings", namespace="CELERY")
