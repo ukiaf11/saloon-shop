@@ -7,7 +7,7 @@
 Mobile-first salon website with a daily lucky-slot campaign, online payment, QR
 coupons and a role-based admin panel.
 
-**Status:** Phases 1–4 complete (foundation; catalog & content; quote & orders; daily campaign & lucky engine). See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+**Status:** Phases 1–4 complete (foundation; catalog & content; quote & orders; daily campaign & lucky engine), plus a **UPI QR payment fallback** with an owner panel: customers pay the salon's own QR, the owner confirms each payment, and confirmation runs the daily draw. See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 **Live (Vercel, noindex until launch):** site <https://saloon-shop-web.vercel.app> · API <https://saloon-shop-api.vercel.app/api/v1/services>
 
@@ -83,7 +83,7 @@ builds.
 | Path | Purpose |
 |---|---|
 | `GET /healthz` | Liveness — no dependencies, for the load balancer |
-| `GET /api/v1/readiness` | Readiness — checks Postgres and Redis |
+| `GET /api/v1/readiness` | Readiness — checks the database and the cache |
 | `GET /api/v1/salon` | Salon profile, 7-day business hours, CMS content |
 | `GET /api/v1/services` | Active services + categories |
 | `GET /api/v1/gallery` | Gallery images |
@@ -94,12 +94,43 @@ builds.
 | `POST /api/v1/orders` | Create an order with snapshotted prices |
 | `GET /api/v1/orders/{id}` | Recover an order by its unguessable id |
 | `GET /api/v1/promotion/today` | Live campaign counters (safe aggregates only) |
+| `GET /api/v1/payments/options` | How customers can pay right now (`upi_qr` / `gateway` / `unavailable`) |
+| `GET /api/v1/payments/qr-image` | The salon's UPI QR, re-encoded PNG |
+| `POST /api/v1/orders/{id}/upi-payment` | Customer submits their 12-digit UPI reference (a claim, not a payment) |
+| `POST /api/v1/auth/login` · `logout` · `me` · `password` | Owner sign-in (bearer token) |
+| `/api/v1/owner/payment-settings` | Owner: QR image, UPI ID, name (password re-entered on every change) |
+| `/api/v1/owner/payments` · `…/{id}/confirm` · `…/{id}/reject` | Owner: check claims; confirming marks paid and decides the draw |
+| `/api/v1/owner/refunds` · `…/{id}/mark-sent` | Owner: winners' refunds, sent by UPI or cash and recorded here |
 
-Photo credits: [`/credits`](frontend/src/app/credits/page.tsx), generated from `frontend/src/assets/photos/credits.json`.
+Photo credits: [`/credits`](<frontend/src/app/(site)/credits/page.tsx>), generated from `frontend/src/assets/photos/credits.json`.
 
-Response shapes are fixed by [API_CONTRACT_PHASE2.md](API_CONTRACT_PHASE2.md) and
-[API_CONTRACT_PHASE3.md](API_CONTRACT_PHASE3.md); the backend serializers and the
+Response shapes are fixed by [API_CONTRACT_PHASE2.md](API_CONTRACT_PHASE2.md),
+[API_CONTRACT_PHASE3.md](API_CONTRACT_PHASE3.md) and
+[API_CONTRACT_UPI_QR.md](API_CONTRACT_UPI_QR.md); the backend serializers and the
 frontend Zod schemas both answer to them.
+
+## Taking payments before a gateway exists (UPI QR)
+
+Until Razorpay is configured, the salon takes payment with its own UPI QR:
+
+1. **Owner:** sign in at `/admin`, open **Payment QR**, upload a screenshot of
+   the salon's UPI QR, optionally add the UPI ID (this gives phone users a
+   one-tap "Open UPI app" button with the amount filled in), and enter the
+   password to save.
+2. **Customer:** places an order and is shown the QR and the exact amount. They
+   pay in any UPI app, then type the 12-digit UPI reference (UTR). Their place
+   in today's draw is held.
+3. **Owner:** **To confirm** lists each claim with its amount, reference and
+   phone number. Find it in your UPI app, then tap **Confirm received**. That
+   marks it paid and gives it the next draw number. The customer's screen
+   updates by itself. If the money isn't there, tap **Not received** instead.
+4. **Winners:** **Refunds** shows what to send back under the
+   reward-attributable rule. Send it by UPI (or cash), then record it.
+
+Confirm payments on the day they arrive: a claim confirmed after midnight is
+marked paid, but that day's draw has closed. Once a gateway is configured
+(Phase 5), the QR switches off by itself (`gateway_configured()` in
+`apps/payments/services.py`).
 
 ## Deployment
 

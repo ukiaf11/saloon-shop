@@ -178,7 +178,12 @@ REST_FRAMEWORK = {
         "otp_request": "3/10min",
         "payment_verify": "10/min",
         "coupon_lookup": "30/min",
-        "admin_login": "5/15min",
+        # Per IP, and only a first line: the real brute-force control is the
+        # database-backed account lockout in apps.accounts.services, because
+        # this throttle fails open when the cache is down.
+        "admin_login": "10/15min",
+        "upi_claim": "10/min",
+        "owner": "300/min",
     },
     "UNAUTHENTICATED_USER": None,
 }
@@ -204,6 +209,23 @@ FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
 # --- Business defaults ----------------------------------------------------
 
 CAMPAIGN_RESERVATION_TTL_SECONDS = env.int("CAMPAIGN_RESERVATION_TTL_SECONDS", default=600)
+
+# A UPI QR payment is verified by a person, not a webhook, so its draw entry is
+# held far longer than a gateway checkout's: long enough for the owner to check
+# their UPI app, and in practice ended by the nightly close of the day anyway.
+UPI_CLAIM_HOLD_SECONDS = env.int("UPI_CLAIM_HOLD_SECONDS", default=36 * 3600)
+
+# --- Owner panel sessions and login protection -------------------------------
+
+ADMIN_SESSION_TTL_HOURS = env.int("ADMIN_SESSION_TTL_HOURS", default=12)
+# Consecutive failures before an account locks, and for how long.
+LOGIN_MAX_FAILURES = 5
+LOGIN_LOCKOUT_MINUTES = 15
+# Failures from one IP, across all accounts, within the lockout window.
+LOGIN_IP_MAX_FAILURES = 20
+# Behind Vercel the client address arrives in X-Real-IP, which the edge sets
+# itself; REMOTE_ADDR is the proxy. Trust the header only where that is true.
+TRUST_X_REAL_IP = env.bool("TRUST_X_REAL_IP", default=False)
 COUPON_TOKEN_BYTES = 32  # 256 bits, well above the 128-bit floor
 LUCKY_SEED_BYTES = 32
 

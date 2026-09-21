@@ -85,6 +85,12 @@ type RequestOptions = {
   /** Forward the CSRF token on mutating admin requests. */
   csrfToken?: string;
   /**
+   * Owner-panel session, sent as `Authorization: Bearer`. A header rather than
+   * a cookie because the site and the API are different sites (each
+   * `*.vercel.app` host is its own), where a session cookie is third-party.
+   */
+  authToken?: string;
+  /**
    * Sent as `Idempotency-Key`. Reuse the same value across retries of one
    * logical attempt so a double-submit cannot create two orders.
    */
@@ -100,9 +106,9 @@ type RequestOptions = {
   /** Abort after this many ms. Defaults to DEFAULT_TIMEOUT_MS. */
   timeoutMs?: number;
   /**
-   * Cookies are required for admin session auth, which is cross-origin, so
-   * "include" stays the default. Public read endpoints pass "omit": they are
-   * unauthenticated, and sending credentials narrows what Next will cache.
+   * Public read endpoints pass "omit": they are unauthenticated, and sending
+   * credentials narrows what Next will cache. The owner panel authenticates
+   * with a bearer token and passes "omit" too.
    */
   credentials?: RequestCredentials;
 };
@@ -115,6 +121,7 @@ export async function apiRequest<T>(
     body,
     signal,
     csrfToken,
+    authToken,
     idempotencyKey,
     next,
     cache,
@@ -123,8 +130,12 @@ export async function apiRequest<T>(
   }: RequestOptions = {},
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  // FormData sets its own multipart Content-Type, boundary included; setting
+  // one here would drop the boundary and break the upload.
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
+  if (body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   if (csrfToken) headers["X-CSRFToken"] = csrfToken;
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
 
   // Combine the caller's signal with the timeout so either can abort.
@@ -136,7 +147,8 @@ export async function apiRequest<T>(
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body:
+      body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
     credentials,
     signal: effectiveSignal,
     ...(next ? { next } : {}),

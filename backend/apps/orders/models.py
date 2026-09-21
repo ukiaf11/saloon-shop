@@ -23,6 +23,17 @@ def generate_public_order_number(today) -> str:
     return f"SL-{today:%y%m%d}-{suffix}"
 
 
+class LuckySkipReason(models.TextChoices):
+    """Why a paid order did not get a draw number. Stored, so the answer a
+    customer was given can be justified later rather than recomputed."""
+
+    REPEAT_ENTRY = "REPEAT_ENTRY", "This phone number already entered that day's draw"
+    DAY_FULL = "DAY_FULL", "That day's draw slots were all taken"
+    DAY_CLOSED = "DAY_CLOSED", "The payment was confirmed after that day's draw closed"
+    HOLD_EXPIRED = "HOLD_EXPIRED", "The draw entry expired before the payment was confirmed"
+    NOT_RUNNING = "NOT_RUNNING", "No draw was running that day"
+
+
 class Order(UUIDTimestampedModel):
     salon = models.ForeignKey("salons.Salon", on_delete=models.PROTECT, related_name="orders")
     customer = models.ForeignKey(
@@ -61,6 +72,9 @@ class Order(UUIDTimestampedModel):
     # requires the two to stay separable: a customer may buy repeatedly while
     # only the first order of the day enters the draw.
     enters_lucky_campaign = models.BooleanField(default=True)
+    lucky_skip_reason = models.CharField(
+        max_length=16, choices=LuckySkipReason.choices, blank=True, default=""
+    )
 
     # Replaying a create request with the same key returns the original order
     # rather than making a second one.

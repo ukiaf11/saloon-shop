@@ -21,6 +21,7 @@ import { WhyChooseUsSection } from "@/components/sections/why-choose-us";
 import {
   getFaqs,
   getGallery,
+  getPaymentMethod,
   getSalon,
   getServices,
   getTestimonials,
@@ -40,13 +41,16 @@ function jsonLd(data: unknown): { __html: string } {
 }
 
 export default async function Home() {
-  const [salon, services, gallery, testimonials, faqs] = await Promise.all([
-    getSalon(),
-    getServices(),
-    getGallery(),
-    getTestimonials(),
-    getFaqs(),
-  ]);
+  const [salon, services, gallery, testimonials, faqs, paymentMethod] = await Promise.all(
+    [
+      getSalon(),
+      getServices(),
+      getGallery(),
+      getTestimonials(),
+      getFaqs(),
+      getPaymentMethod(),
+    ],
+  );
 
   // schema.org wants absolute URLs. Relative paths would be resolved against
   // the crawler's idea of the base, so only fully-qualified ones are offered.
@@ -85,7 +89,7 @@ export default async function Home() {
         />
       ) : null}
 
-      <Hero />
+      <Hero paymentMethod={paymentMethod} />
 
       {/* Live counters from GET /promotion/today. Client-rendered and polled,
           because a baked-in slot count goes stale the moment anyone books. */}
@@ -97,7 +101,7 @@ export default async function Home() {
           root layout), so it follows the customer down the page rather than
           sitting in one section. */}
 
-      <HowItWorksSection />
+      <HowItWorksSection paymentMethod={paymentMethod} />
 
       <GallerySection images={gallery} />
       <TestimonialsSection testimonials={testimonials} />

@@ -44,6 +44,7 @@ import {
   promotionTodaySchema,
   gallerySchema,
   legalPageSchema,
+  paymentOptionsSchema,
   salonSchema,
   serviceListSchema,
   testimonialListSchema,
@@ -51,6 +52,7 @@ import {
   type GalleryImage,
   type LegalPage,
   type LegalPageSlug,
+  type PaymentOptions,
   type PromotionToday,
   type Salon,
   type ServiceList,
@@ -70,6 +72,7 @@ export const CACHE_TAGS = {
   testimonials: "testimonials",
   faqs: "faqs",
   legal: "legal",
+  payments: "payments",
 } as const;
 
 /** Keep log lines flat: an ApiError's code is what anyone debugging needs. */
@@ -146,6 +149,18 @@ export async function getPromotionToday(): Promise<PromotionToday | null> {
     console.error(`[site-data] /promotion/today unavailable: ${describeFailure(error)}`);
     return null;
   }
+}
+
+/**
+ * How customers pay, for page copy only. Cached like the rest of the marketing
+ * content; the checkout itself asks the API live, so a QR the owner has just
+ * uploaded works at once even while this copy is up to five minutes behind.
+ */
+export async function getPaymentMethod(): Promise<PaymentOptions["method"]> {
+  return (
+    (await readPublic("/payments/options", paymentOptionsSchema, CACHE_TAGS.payments))
+      ?.method ?? "unavailable"
+  );
 }
 
 export async function getGallery(): Promise<GalleryImage[]> {

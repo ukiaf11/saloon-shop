@@ -67,6 +67,7 @@ REST_FRAMEWORK = {
 # upload could never be served back. Uploads arrive with the admin phase and
 # will need object storage (Vercel Blob or R2) then.
 SERVE_MEDIA = env.bool("SERVE_MEDIA", default=not ON_VERCEL)
+TRUST_X_REAL_IP = env.bool("TRUST_X_REAL_IP", default=ON_VERCEL)
 MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
 
 # --- Serverless database and cache ------------------------------------------

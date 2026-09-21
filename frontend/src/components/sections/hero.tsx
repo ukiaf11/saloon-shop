@@ -38,7 +38,11 @@ function Badge({
   );
 }
 
-export function Hero() {
+export function Hero({
+  paymentMethod = "gateway",
+}: {
+  paymentMethod?: "upi_qr" | "gateway" | "unavailable";
+}) {
   return (
     <section className="px-4 pt-8 pb-10 sm:pt-14 sm:pb-12">
       <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.05fr_1fr] lg:gap-16">
@@ -117,8 +121,9 @@ export function Hero() {
           />
           <Badge
             art={<CardArt size={42} />}
-            title="UPI & cards"
-            detail="secure checkout"
+            // Cards need the gateway; the QR fallback takes UPI only.
+            title={paymentMethod === "upi_qr" ? "Pay by UPI" : "UPI & cards"}
+            detail={paymentMethod === "upi_qr" ? "any UPI app" : "secure checkout"}
             // Hidden on a phone: at ~330px the photo cannot carry three
             // badges without one covering the photo credit.
             className="clay-float -bottom-5 left-8 hidden sm:flex"

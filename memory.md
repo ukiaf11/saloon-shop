@@ -3,7 +3,7 @@
 > Working memory for this project. Read this first at the start of a session; update it at the end of one.
 > Keep it short and current — it is a state file, not a log archive. Details live in the docs it points to.
 
-**Last updated:** 2026-09-21 (Phase 4 complete; claymorphism redesign; **live on Vercel**)
+**Last updated:** 2026-09-22 (Phase 4 complete; live on Vercel; **UPI QR payment fallback + owner panel**)
 
 ---
 
@@ -21,7 +21,7 @@ The hard requirement underneath all of it: **every money and promotion decision 
 
 | | |
 |---|---|
-| **Phase** | ✅ Phases 1–4 complete. Phase 5 (payments) is next — **blocked on Razorpay test keys**. |
+| **Phase** | ✅ Phases 1–4 complete, plus the **UPI QR fallback** (§17): owner panel at `/admin`, manual payment confirmation, the lucky decision, manual winner refunds. Phase 5 (gateway) still **blocked on Razorpay test keys**. |
 | **Code** | `backend/` (Django 5 + DRF, uv-managed) and `frontend/` (Next 16, TS, Tailwind 4) both boot, migrate and pass their checks. |
 | **Repo** | <https://github.com/ukiaf11/saloon-shop> (**public**), branch `main`. CI and container images green; Pages is now manual-only. |
 | **Live** | <https://saloon-shop-web.vercel.app> + <https://saloon-shop-api.vercel.app> on Vercel Hobby with Neon, Singapore. noindex. See §16. |
@@ -30,7 +30,7 @@ The hard requirement underneath all of it: **every money and promotion decision 
 | **Engineering blockers** | None until Phase 4 (needs the wording decision) and Phase 5 (needs Razorpay keys). |
 | **Business track** | Owner to approve "5 Lucky Slots"; promotion/refund rules need drafting for legal. |
 
-**Verified working:** `docker compose` Postgres + Redis, migrations, all three seed commands, `/healthz` + `/api/v1/readiness`, Celery round-trip, JSON log redaction, CORS allowlist, image upload validation (rejects disguised non-images and SVG), the six public read endpoints against the contract, the public page rendering real seeded data with full JSON-LD, the Next image optimizer on API-served media. **301 tests pass** (243 backend, 58 frontend); ruff + eslint + tsc + prettier + `check --deploy` all clean.
+**Verified working:** `docker compose` Postgres + Redis, migrations, all three seed commands, `/healthz` + `/api/v1/readiness`, Celery round-trip, JSON log redaction, CORS allowlist, image upload validation (rejects disguised non-images and SVG), the six public read endpoints against the contract, the public page rendering real seeded data with full JSON-LD, the Next image optimizer on API-served media. **403 tests pass** (322 backend, 81 frontend); ruff + eslint + tsc + prettier + `check --deploy` all clean.
 
 **Not yet measured:** Lighthouse mobile score (Phase 2 exit gate names it; needs a real device/CI run).
 
@@ -45,6 +45,7 @@ The hard requirement underneath all of it: **every money and promotion decision 
 | `03_FRONTEND_ADMIN_DEPLOYMENT_TESTING.md` | Public UI/UX, admin screens, deployment, monitoring, test strategy, launch checklist |
 | `REQUIREMENTS.md` | Consolidated DB / backend / UI / infra / test requirements + open decisions |
 | `IMPLEMENTATION_PLAN.md` | 11 phases with tasks, exit gates, estimates, risk register |
+| `API_CONTRACT_PHASE2/3.md`, `API_CONTRACT_UPI_QR.md` | Exact request/response shapes; serializers and Zod schemas answer to them |
 
 When the specs and the derived docs disagree, the three numbered source documents win.
 
@@ -412,6 +413,11 @@ open** when the cache is down (a Redis blip used to 500 the whole API), and
 
 ## 14. Next actions
 
+**Owner, now:** sign in at `/admin` (the seeded owner `owner@example.com`,
+password in the root `.env` as `PROD_OWNER_PASSWORD`), **change the password**
+under Account, then upload the salon's real UPI QR under Payment QR. Until a QR
+is uploaded, customers see "online payment is not live yet".
+
 **Engineering — Phase 5 (payments), blocked on Razorpay test keys.** Provider
 abstraction, `PaymentGatewayConfig` storing secret *references* only, payment
 create/verify, the webhook with `UNIQUE (provider, gateway_event_id)` as the
@@ -556,3 +562,75 @@ one-off `SEED_*` vars were **deleted** after the first build. Web:
 
 **Rotating `FIELD_ENCRYPTION_KEY` makes stored lucky seeds unreadable.** Do not
 change it without a re-encryption migration.
+
+## 17. UPI QR payment fallback (2026-09-22)
+
+User request: "until the owner sets the payment gateway credentials, allow the
+owner to add a QR code … to get payments from customers". Contract in
+`API_CONTRACT_UPI_QR.md`.
+
+**Decisions, and who made them:**
+- **QR payments enter the daily draw when the owner confirms them.** The user
+  chose this over "discount only" when asked. Confirmation *is* the Doc 2 §16
+  lucky decision transaction, with the owner's check standing in for gateway
+  verification. The draw number is the order of **confirmation**, not of
+  claim. The owner still cannot target winners, because future winning
+  positions stay encrypted and hidden.
+- A customer's 12-digit UTR is a **claim**. It holds a draw place
+  (`SlotReservation`, 36 h TTL) and moves the order to `PAYMENT_PENDING`. Only
+  confirmation makes it `PAID`.
+- **The day rule:** a claim confirmed after its day ends gets `DAY_CLOSED`, is
+  paid, and has no draw number. This is checked against the date as well as
+  campaign status, because Hobby cron closes the day up to an hour late.
+- Winner refunds follow REQUIREMENTS 8.1 exactly (net paid of purchased
+  package lines, from `DailyCampaign.reward_snapshot`). They are recorded as
+  `Refund` rows the owner marks sent (UPI with a 12-digit reference, or cash).
+  There is no gateway refund.
+- **OWNER-only** for everything, per the RBAC matrix (payment config is
+  owner-only, and only the owner can see their own UPI account). Changing the
+  QR or UPI ID **requires the password again**, because it redirects all
+  money.
+- **Bearer-token sessions, not cookies.** `*.vercel.app` hosts are separate
+  sites, so a cookie would be third-party. Only the token's SHA-256 is stored,
+  and sessions last 12 h. Lockout is in the database (5 failures → 15 min,
+  plus 20 per IP), because the cache throttle fails open.
+- The QR is stored **in Postgres** (`PaymentSettings.qr_image`), re-encoded to
+  PNG (metadata stripped, transparency flattened onto white, at most 1200 px),
+  and served with an immutable versioned URL. Vercel has no persistent disk.
+- `gateway_configured()` in `apps/payments/services.py` always returns `False`
+  today. **Phase 5 flips it**, and the QR then switches off by itself.
+  Phase 5's webhook path must reuse `decide_lucky()`, not reimplement it.
+
+**Also fixed while here:**
+- DRF read `"5/15min"` as unit `"1"` and raised a KeyError, which the fail-open
+  throttle swallowed, so `admin_login` and `otp_request` were silently
+  unthrottled. `ResilientScopedRateThrottle.parse_rate` now accepts multiplied
+  periods, and a test parses every configured rate.
+- The readiness key is `cache`, not `redis`.
+- Marketing pages moved into `app/(site)/` (same URLs), so `/admin` has no site
+  chrome.
+- How-it-works and the hero badge describe UPI QR when that is the method.
+
+**Verified:** 322 backend and 81 frontend tests, including two real-thread
+races: 10 simultaneous confirmations get numbers 1–10, and one payment
+confirmed 5 times at once counts once. The E2E in real Chrome ran against the
+local stack, with owner and customer in separate tabs, 23/23 checks: sign-in,
+QR upload, pay step on a phone, claim, confirm, a forced win, the customer
+seeing the result by polling, refund sent, and the booking page reached from
+localStorage.
+
+**Traps hit:**
+- React 19's lint (`react-hooks/set-state-in-effect`) rejects calling a loader
+  from an effect, even when its setState comes after an `await`. The fix
+  pattern is `.then()` inside the effect, a reload counter, results keyed by
+  the id they were fetched for, and `useSyncExternalStore` for storage.
+- Next only allows specific exports from layout files. `SALON_NAME` lives in
+  `src/lib/site.ts`.
+- A frontend built while the API is down prerenders empty sections for 5 min
+  (ISR). Rebuild with the API up before judging the page.
+- `pkill -f "<pattern>"` inside a Bash command kills the shell running it.
+  Find the PID with `ps … | grep "[x]yz"`.
+
+**Not done (still Phase 6+):** QR coupons (winners show their order number
+instead), notifications, MFA for the owner (the panel says so and suggests a
+long password), and staff roles other than OWNER.

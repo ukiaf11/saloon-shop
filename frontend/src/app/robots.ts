@@ -17,8 +17,9 @@ export default function robots(): MetadataRoute.Robots {
 
   return {
     rules: [
-      // The admin surface and opaque coupon URLs must never be indexed.
-      { userAgent: "*", allow: "/", disallow: ["/admin", "/coupon/"] },
+      // The admin surface, personal booking pages and opaque coupon URLs must
+      // never be indexed.
+      { userAgent: "*", allow: "/", disallow: ["/admin", "/order", "/coupon/"] },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,
   };

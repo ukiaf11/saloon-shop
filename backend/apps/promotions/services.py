@@ -16,11 +16,20 @@ from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from apps.promotions.lucky import commitment_for, generate_seed, winning_positions
+from apps.catalog.models import Service
+from apps.orders.models import LuckySkipReason, Order
+from apps.orders.state import OrderStatus
+from apps.promotions.lucky import (
+    commitment_for,
+    generate_seed,
+    is_winning_position,
+    winning_positions,
+)
 from apps.promotions.models import (
     CampaignConfig,
     CampaignStatus,
     DailyCampaign,
+    LuckyDecision,
     ReservationStatus,
     SlotReservation,
 )
@@ -172,12 +181,19 @@ class CampaignClosed(DomainError):
     message = "Today's promotion has closed."
 
 
+class EntryLimitReached(DomainError):
+    code = "entry_limit_reached"
+    http_status = 409
+    message = "This phone number has already entered today's draw."
+
+
 def reserve_slot(
     campaign: DailyCampaign,
     *,
     order=None,
     customer=None,
     ttl_seconds: int | None = None,
+    max_per_customer: int | None = None,
 ) -> SlotReservation:
     """Take a hold on one of today's slots, or raise CapacityExhausted.
 
@@ -188,6 +204,10 @@ def reserve_slot(
     Counting `paid_count + live reservations` rather than paid alone is what
     stops the slot being promised to several people at once while they are all
     still paying.
+
+    `max_per_customer` enforces the per-phone daily entry limit (Doc 2 section
+    28) under the same lock, so two simultaneous entries from one phone cannot
+    both slip under it.
     """
     ttl = ttl_seconds or settings.CAMPAIGN_RESERVATION_TTL_SECONDS
 
@@ -198,6 +218,22 @@ def reserve_slot(
             raise CampaignClosed()
 
         now = timezone.now()
+
+        if customer is not None and max_per_customer:
+            held = SlotReservation.objects.filter(
+                daily_campaign=locked,
+                customer=customer,
+                status=ReservationStatus.ACTIVE,
+                expires_at__gt=now,
+            )
+            if order is not None:
+                held = held.exclude(order=order)
+            entered = LuckyDecision.objects.filter(
+                daily_campaign=locked, order__customer=customer
+            ).count()
+            if held.count() + entered >= max_per_customer:
+                raise EntryLimitReached()
+
         live_holds = SlotReservation.objects.filter(
             daily_campaign=locked,
             status=ReservationStatus.ACTIVE,
@@ -225,6 +261,184 @@ def reserve_slot(
         )
 
     return reservation
+
+
+# --- draw entry and the lucky decision -------------------------------------
+
+
+def _skip_draw(order: Order, reason: str) -> None:
+    order.enters_lucky_campaign = False
+    order.lucky_skip_reason = reason
+    order.daily_campaign = None
+    order.save(
+        update_fields=[
+            "enters_lucky_campaign",
+            "lucky_skip_reason",
+            "daily_campaign",
+            "updated_at",
+        ]
+    )
+    logger.info("draw_entry_skipped", extra={"order_id": str(order.id), "reason": reason})
+
+
+def hold_draw_entry(order: Order, *, ttl_seconds: int | None = None) -> SlotReservation | None:
+    """Hold a place in today's draw for an order whose payment awaits checking.
+
+    This is the manual-payment equivalent of reserving at payment-create time:
+    the customer has paid and told us so, and the hold keeps their place while
+    a person verifies it. Every outcome is recorded on the order -- a hold, or
+    the reason there is none -- so the customer is told the truth up front.
+
+    Re-evaluated from scratch on each new claim, so a customer whose earlier
+    claim was rejected is judged on today's state, not yesterday's.
+    """
+    salon = order.salon
+    order.enters_lucky_campaign = True
+    order.lucky_skip_reason = ""
+    # A cancelled or expired hold from an earlier claim would block the new one
+    # (one reservation per order), and it no longer means anything.
+    SlotReservation.objects.filter(order=order).exclude(status=ReservationStatus.CONSUMED).delete()
+
+    try:
+        campaign = provision_campaign(salon)
+    except CampaignNotConfigured:
+        _skip_draw(order, LuckySkipReason.NOT_RUNNING)
+        return None
+
+    try:
+        reservation = reserve_slot(
+            campaign,
+            order=order,
+            customer=order.customer,
+            ttl_seconds=ttl_seconds,
+            max_per_customer=campaign.config.max_entries_per_phone_per_day,
+        )
+    except EntryLimitReached:
+        _skip_draw(order, LuckySkipReason.REPEAT_ENTRY)
+        return None
+    except CapacityExhausted:
+        _skip_draw(order, LuckySkipReason.DAY_FULL)
+        return None
+    except CampaignClosed:
+        _skip_draw(order, LuckySkipReason.DAY_CLOSED)
+        return None
+
+    order.daily_campaign = campaign
+    order.save(
+        update_fields=[
+            "enters_lucky_campaign",
+            "lucky_skip_reason",
+            "daily_campaign",
+            "updated_at",
+        ]
+    )
+    return reservation
+
+
+def reward_outcome(order: Order, campaign: DailyCampaign) -> tuple[int, list[str]]:
+    """(refund_paise, free service names) for a winning order.
+
+    Reward-attributable-only (REQUIREMENTS.md 8.1): refund what was actually
+    paid -- net of the allocated discount -- for purchased lines in the reward
+    package; package services not purchased become free entitlements. The
+    package is read from the day's snapshot, so a config change afterwards
+    cannot alter what that day's winners were owed.
+    """
+    slugs = list((campaign.reward_snapshot or {}).get("service_slugs", []))
+    items = list(order.items.all())
+    refund = sum(item.net_paid_paise for item in items if item.service_slug_snapshot in slugs)
+
+    purchased = {item.service_slug_snapshot for item in items}
+    missing = [slug for slug in slugs if slug not in purchased]
+    names = dict(
+        Service.objects.filter(salon=order.salon, slug__in=missing).values_list("slug", "name")
+    )
+    free = [names.get(slug, slug.replace("-", " ").title()) for slug in missing]
+    return refund, free
+
+
+def decide_lucky(order: Order, *, now: dt.datetime | None = None) -> LuckyDecision | None:
+    """The lucky decision transaction (Doc 2 section 16).
+
+    The caller must be inside transaction.atomic(), must hold the order's row
+    lock, and must already have verified the payment and moved the order to
+    PAID. Returns None -- with the reason stored on the order -- when the order
+    does not get a draw number.
+
+    The campaign row lock serialises every decision for the day, so
+    participant numbers are strictly sequential with no gaps or repeats.
+    """
+    if not transaction.get_connection().in_atomic_block:
+        raise RuntimeError("decide_lucky() must run inside transaction.atomic()")
+    now = now or timezone.now()
+
+    if not order.enters_lucky_campaign:
+        return None
+
+    reservation = SlotReservation.objects.select_for_update().filter(order=order).first()
+    if reservation is None:
+        _skip_draw(order, LuckySkipReason.HOLD_EXPIRED)
+        return None
+
+    campaign = DailyCampaign.objects.select_for_update().get(pk=reservation.daily_campaign_id)
+
+    # A day's draw takes entries only on that day. The nightly close can run up
+    # to an hour late on Vercel Hobby, so the date is checked as well as the
+    # status: a confirmation at 00:10 must not slip into yesterday's draw.
+    if campaign.status != CampaignStatus.ACTIVE or campaign.campaign_date < salon_today(
+        order.salon
+    ):
+        if reservation.status == ReservationStatus.ACTIVE:
+            reservation.status = ReservationStatus.EXPIRED
+            reservation.save(update_fields=["status", "updated_at"])
+        _skip_draw(order, LuckySkipReason.DAY_CLOSED)
+        return None
+
+    if reservation.status != ReservationStatus.ACTIVE or reservation.expires_at <= now:
+        _skip_draw(order, LuckySkipReason.HOLD_EXPIRED)
+        return None
+
+    # Holds are admitted only while paid + live holds < capacity, so a live
+    # hold always has room. Checked anyway: the database constraint would
+    # otherwise surface this as a 500 in the middle of a confirmation.
+    if campaign.paid_count >= campaign.capacity:
+        reservation.status = ReservationStatus.EXPIRED
+        reservation.save(update_fields=["status", "updated_at"])
+        _skip_draw(order, LuckySkipReason.DAY_FULL)
+        return None
+
+    reservation.status = ReservationStatus.CONSUMED
+    reservation.save(update_fields=["status", "updated_at"])
+
+    campaign.paid_count += 1
+    participant_number = campaign.paid_count
+    is_winner = is_winning_position(participant_number, decrypt_winning_positions(campaign))
+    if is_winner:
+        campaign.winner_count += 1
+    campaign.save(update_fields=["paid_count", "winner_count", "updated_at"])
+
+    refund_paise, free_services = reward_outcome(order, campaign) if is_winner else (0, [])
+    decision = LuckyDecision.objects.create(
+        daily_campaign=campaign,
+        order=order,
+        participant_number=participant_number,
+        is_winner=is_winner,
+        reward_refund_paise=refund_paise,
+        free_services=free_services,
+        decided_at=now,
+    )
+    order.transition_to(OrderStatus.LUCKY_DECIDED)
+
+    logger.info(
+        "lucky_decided",
+        extra={
+            "order_id": str(order.id),
+            "campaign_id": str(campaign.id),
+            "participant_number": participant_number,
+            "is_winner": is_winner,
+        },
+    )
+    return decision
 
 
 def expire_stale_reservations(now: dt.datetime | None = None) -> int:

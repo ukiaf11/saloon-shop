@@ -1,13 +1,19 @@
 /**
  * The four steps, each with its own clay illustration. The #offers anchor is
  * the navbar's "How it works" link.
+ *
+ * Steps 2-4 depend on how customers pay. While the salon takes payment by its
+ * own UPI QR, a person confirms each payment and there is no coupon yet, so
+ * the copy says exactly that rather than promising a card gateway.
  */
 
 import { CardArt, ChecklistArt, StarArt, TicketArt } from "@/components/clay/clay-art";
 
 import { Section } from "./section";
 
-const STEPS = [
+type PaymentMethod = "upi_qr" | "gateway" | "unavailable";
+
+const GATEWAY_STEPS = [
   {
     art: ChecklistArt,
     tile: "bg-peach",
@@ -34,7 +40,34 @@ const STEPS = [
   },
 ] as const;
 
-export function HowItWorksSection() {
+const UPI_QR_STEPS = [
+  GATEWAY_STEPS[0],
+  {
+    art: CardArt,
+    tile: "bg-lavender",
+    title: "Pay by UPI",
+    body: "Scan the salon's UPI QR — or tap to open your UPI app on your phone — then enter the 12-digit UPI reference so we can match your payment.",
+  },
+  {
+    art: StarArt,
+    tile: "bg-butter",
+    title: "See your result",
+    body: "As soon as the salon confirms your payment, you find out whether you landed one of the day's lucky slots.",
+  },
+  {
+    art: TicketArt,
+    tile: "bg-mint",
+    title: "Show your order number",
+    body: "Show your order number at the salon. If you won, your booking lists your free services and any refund due.",
+  },
+] as const;
+
+export function HowItWorksSection({
+  paymentMethod = "gateway",
+}: {
+  paymentMethod?: PaymentMethod;
+}) {
+  const steps = paymentMethod === "upi_qr" ? UPI_QR_STEPS : GATEWAY_STEPS;
   return (
     <Section
       id="offers"
@@ -46,7 +79,7 @@ export function HowItWorksSection() {
           steps take one screen instead of three. From sm up they become
           centred cards. */}
       <ol className="grid gap-5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
-        {STEPS.map(({ art: Art, tile, title, body }, index) => (
+        {steps.map(({ art: Art, tile, title, body }, index) => (
           <li
             key={title}
             className="clay relative flex items-start gap-4 p-4 text-left sm:block sm:p-6 sm:pt-8 sm:text-center"

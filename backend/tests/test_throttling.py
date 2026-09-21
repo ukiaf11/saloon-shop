@@ -52,3 +52,27 @@ def test_real_rate_limits_still_apply_when_the_cache_works():
         return_value=False,
     ):
         assert throttle.allow_request(request, _View()) is False
+
+
+@pytest.mark.parametrize(
+    ("rate", "expected"),
+    [
+        ("10/min", (10, 60)),
+        ("120/m", (120, 60)),
+        ("5/15min", (5, 900)),
+        ("3/10min", (3, 600)),
+        ("100/h", (100, 3600)),
+        ("2/day", (2, 86400)),
+    ],
+)
+def test_rates_with_a_multiplied_period_parse(rate, expected):
+    """DRF alone reads "15min" as unit "1" and raises; the fail-open wrapper
+    then swallowed that, leaving the scope silently unthrottled."""
+    assert ResilientScopedRateThrottle().parse_rate(rate) == expected
+
+
+def test_every_configured_rate_parses(settings):
+    throttle = ResilientScopedRateThrottle()
+    for scope, rate in settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"].items():
+        num, duration = throttle.parse_rate(rate)
+        assert num > 0 and duration > 0, scope

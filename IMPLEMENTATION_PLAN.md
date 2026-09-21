@@ -192,6 +192,13 @@ across Python versions — an auditor can re-derive any past day in any language
 
 ## Phase 5 — Payments (6–8 days) ⚠️ high risk
 
+> **Already in place from the UPI QR fallback (2026-09-22, `API_CONTRACT_UPI_QR.md`):**
+> the `Payment` model (provider `MANUAL_UPI`, partial unique on live
+> `(provider, reference)` and live order), the `gateway_configured()` switch
+> the gateway must flip, holding the draw place at claim time, and
+> `decide_lucky()`. The gateway's verify/webhook path must call
+> `decide_lucky()` inside its own transaction, not reimplement it.
+
 > **Hosting constraint (Vercel, since 2026-09-21).** There is no Celery worker
 > or beat on Vercel. `reconcile_payments` and `retry_pending_refunds` are
 > scheduled every minute in `config/celery.py`, but Vercel Hobby cron runs once
@@ -224,8 +231,8 @@ across Python versions — an auditor can re-derive any past day in any language
 ## Phase 6 — Lucky result & coupons (4–5 days)
 
 **Backend**
-- [ ] The single atomic decision transaction: lock campaign row → verify not already processed → consume reservation → increment `paid_count` → `participant_number = paid_count` → membership check → create `LuckyDecision` → increment `winner_count` if winner → create `Coupon` + entitlements. One transaction, no exceptions.
-- [ ] Unique constraints on `LuckyDecision.order_id` and `(daily_campaign_id, participant_number)` as the structural guard; the race loser reads and returns the existing decision.
+- [x] The single atomic decision transaction — `apps.promotions.services.decide_lucky`, built for the UPI QR fallback, **minus the coupon step**: lock campaign row → verify not already processed → consume reservation → increment `paid_count` → `participant_number = paid_count` → membership check → create `LuckyDecision` → increment `winner_count` if winner → create `Coupon` + entitlements. One transaction, no exceptions.
+- [x] Unique constraints on `LuckyDecision.order_id` and `(daily_campaign_id, participant_number)` as the structural guard. Double confirmation is refused by the payment's own state under its row lock (tested with real threads).
 - [ ] `CouponIssuer`: ≥128-bit opaque token, short human code, validity window, entitlement rows (`PAID` vs `FREE_REWARD`).
 - [ ] `GET /api/v1/coupons/{token}` — customer-safe fields only, no gateway IDs, no internal IDs.
 - [ ] QR generation carrying only the coupon URL.
@@ -261,7 +268,10 @@ Scope locked: **reward-attributable-only** (`REQUIREMENTS.md` §8.1).
 
 ## Phase 8 — Admin panel (8–10 days)
 
-- [ ] Admin auth: login, TOTP MFA, server-side session cookies, throttling, lockout, step-up re-auth for sensitive actions.
+> Started by the UPI QR fallback: `/admin` has sign-in, payment confirmation,
+> refunds, the payment QR and password change, all OWNER-only.
+
+- [ ] Admin auth: login ✅, **TOTP MFA ❌ still to do**, sessions ✅ (bearer tokens hashed server-side rather than cookies, because the site and API are different sites on `*.vercel.app`), DB-backed lockout ✅, step-up re-auth ✅ (password) for payment settings and password changes.
 - [ ] RBAC permission classes + the matrix from `REQUIREMENTS.md` §5, enforced at both API and UI layers.
 - [ ] Dashboard with the eight KPI cards and the seven charts.
 - [ ] Services admin: table, CRUD, reorder, image change, price dialog writing history.

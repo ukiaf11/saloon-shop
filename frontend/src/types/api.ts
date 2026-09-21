@@ -277,6 +277,38 @@ export const orderItemSchema = z.object({
   net_paid_paise: z.number().int().nonnegative(),
 });
 
+/**
+ * The latest payment attempt. Only the last four digits of the customer's UPI
+ * reference ever come back.
+ */
+export const orderPaymentSchema = z.object({
+  status: z.enum(["not_started", "awaiting_confirmation", "confirmed", "rejected"]),
+  method: z.enum(["upi_qr"]).nullable(),
+  reference_last4: z.string().nullable(),
+  rejection_reason: z.string().nullable(),
+  submitted_at: z.string().nullable(),
+  decided_at: z.string().nullable(),
+});
+export type OrderPayment = z.infer<typeof orderPaymentSchema>;
+
+/**
+ * Where the order stands in the daily draw. `held` means a place is kept while
+ * the payment is checked -- it says nothing about winning, because nothing has
+ * been decided.
+ */
+export const orderLuckySchema = z.object({
+  status: z.enum(["pending", "held", "not_entered", "won", "not_won"]),
+  reason: z
+    .enum(["REPEAT_ENTRY", "DAY_FULL", "DAY_CLOSED", "HOLD_EXPIRED", "NOT_RUNNING"])
+    .nullable(),
+  participant_number: z.number().int().positive().nullable(),
+  campaign_date: z.string().nullable(),
+  refund_paise: z.number().int().nonnegative(),
+  refund_status: z.enum(["pending", "sent"]).nullable(),
+  free_services: z.array(z.string()),
+});
+export type OrderLucky = z.infer<typeof orderLuckySchema>;
+
 export const orderSchema = z.object({
   id: z.uuid(),
   public_order_number: z.string(),
@@ -294,5 +326,24 @@ export const orderSchema = z.object({
     phone_masked: z.string(),
   }),
   items: z.array(orderItemSchema),
+  paid_at: z.string().nullable(),
+  payment: orderPaymentSchema,
+  lucky: orderLuckySchema,
 });
 export type Order = z.infer<typeof orderSchema>;
+
+/**
+ * GET /payments/options. `upi_qr` is the fallback while no payment gateway is
+ * configured: the salon's own QR, confirmed by the owner by hand.
+ */
+export const paymentOptionsSchema = z.object({
+  method: z.enum(["upi_qr", "gateway", "unavailable"]),
+  upi_qr: z
+    .object({
+      qr_image_version: z.string(),
+      upi_id: z.string().nullable(),
+      payee_name: z.string().nullable(),
+    })
+    .nullable(),
+});
+export type PaymentOptions = z.infer<typeof paymentOptionsSchema>;

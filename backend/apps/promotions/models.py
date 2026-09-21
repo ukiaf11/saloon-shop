@@ -245,3 +245,56 @@ class SlotReservation(UUIDTimestampedModel):
         from django.utils import timezone
 
         return self.status == ReservationStatus.ACTIVE and self.expires_at > timezone.now()
+
+
+class LuckyDecision(UUIDTimestampedModel):
+    """The outcome of one verified payment's entry into its day's draw.
+
+    Written once, inside the same transaction that bumps the campaign's
+    paid_count, and never updated (Doc 2 section 16). participant_number is the
+    order's position in that day's paid sequence; it wins when it is one of
+    the positions drawn -- and committed to -- before the day began.
+    """
+
+    daily_campaign = models.ForeignKey(
+        DailyCampaign, on_delete=models.PROTECT, related_name="decisions"
+    )
+    order = models.OneToOneField(
+        "orders.Order", on_delete=models.PROTECT, related_name="lucky_decision"
+    )
+    participant_number = models.PositiveIntegerField()
+    is_winner = models.BooleanField()
+    # A winner's refund under the reward-attributable rule (REQUIREMENTS.md
+    # 8.1): what they paid, after discount, for purchased services that are in
+    # the reward package. Zero for a non-winner.
+    reward_refund_paise = models.BigIntegerField(default=0)
+    # Package services the winner did not buy, which they get free. Names are
+    # snapshotted so a later rename cannot change what was promised.
+    free_services = models.JSONField(default=list, blank=True)
+    decided_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "lucky_decision"
+        ordering = ["daily_campaign", "participant_number"]
+        constraints = [
+            # Two orders can never share a draw number on the same day.
+            models.UniqueConstraint(
+                fields=["daily_campaign", "participant_number"],
+                name="uniq_lucky_decision_participant",
+            ),
+            models.CheckConstraint(
+                check=models.Q(participant_number__gte=1),
+                name="ck_lucky_decision_participant_positive",
+            ),
+            models.CheckConstraint(
+                check=models.Q(reward_refund_paise__gte=0),
+                name="ck_lucky_decision_refund_non_negative",
+            ),
+            models.CheckConstraint(
+                check=models.Q(is_winner=True) | models.Q(reward_refund_paise=0),
+                name="ck_lucky_decision_refund_only_for_winners",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"#{self.participant_number} {'won' if self.is_winner else 'no win'}"

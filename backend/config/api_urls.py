@@ -21,4 +21,8 @@ urlpatterns = [
     path("", include("apps.orders.urls")),
     # Phase 4 -- daily campaign.
     path("", include("apps.promotions.urls")),
+    # UPI QR fallback: owner sign-in, payment claims, confirmation, refunds.
+    path("", include("apps.accounts.urls")),
+    path("", include("apps.payments.urls")),
+    path("", include("apps.refunds.urls")),
 ]

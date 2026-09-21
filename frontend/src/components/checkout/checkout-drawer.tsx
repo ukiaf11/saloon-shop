@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * Collects the minimum the salon needs and places the order.
+ * Collects the minimum the salon needs, places the order, then takes payment.
  *
- * Phase 3 ends at a created order. Payment is Phase 5, so the success state
- * says so plainly rather than implying money has moved — telling someone their
- * booking is confirmed when nothing has been charged would be a lie the salon
- * has to resolve at the counter.
+ * While no payment gateway is configured, payment is the salon's UPI QR (see
+ * upi-payment.tsx). With neither a gateway nor a QR, the success state says
+ * plainly that nothing has been charged — telling someone their booking is
+ * paid when it is not would be a lie the salon has to resolve at the counter.
  *
  * Validation is duplicated on purpose: the Zod schema here is a courtesy that
  * catches typos without a round trip, and the server validates again because
@@ -15,6 +15,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "motion/react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -22,7 +23,10 @@ import { z } from "zod";
 import { useCart } from "@/lib/cart";
 import { formatInr } from "@/lib/money";
 import { createOrder, newIdempotencyKey } from "@/lib/orders";
-import type { Order, Quote } from "@/types/api";
+import { fetchPaymentOptions, rememberOrder } from "@/lib/payments";
+import type { Order, PaymentOptions, Quote } from "@/types/api";
+
+import { UpiPaymentPanel } from "./upi-payment";
 
 const checkoutSchema = z.object({
   name: z
@@ -54,6 +58,8 @@ export function CheckoutDrawer({
   const cart = useCart();
   const [submitting, setSubmitting] = useState(false);
   const [placed, setPlaced] = useState<Order | null>(null);
+  // undefined while loading; null when the options could not be fetched.
+  const [options, setOptions] = useState<PaymentOptions | null | undefined>(undefined);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
 
@@ -101,8 +107,14 @@ export function CheckoutDrawer({
         idempotencyKey,
       );
       setPlaced(order);
+      rememberOrder({ id: order.id, number: order.public_order_number });
       cart.clear();
       reset();
+      try {
+        setOptions(await fetchPaymentOptions());
+      } catch {
+        setOptions(null);
+      }
     } catch (err) {
       setSubmitError(
         err instanceof Error
@@ -140,7 +152,48 @@ export function CheckoutDrawer({
         aria-labelledby="checkout-title"
         className="clay relative m-3 max-h-[92dvh] w-full max-w-lg overflow-y-auto p-6 sm:p-8"
       >
-        {placed ? (
+        {placed && options === undefined ? (
+          <p
+            id="checkout-title"
+            role="status"
+            className="text-ink-soft py-10 text-center"
+          >
+            Preparing payment…
+          </p>
+        ) : placed &&
+          (options?.method === "upi_qr" || placed.payment.status !== "not_started") ? (
+          <div>
+            <UpiPaymentPanel
+              order={placed}
+              upi={options?.upi_qr ?? null}
+              headingId="checkout-title"
+              onOrderChange={setPlaced}
+            />
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              {/* Link, not <a>: it carries the base path on the GitHub Pages
+                  build. Closing first, because the drawer lives in the site
+                  layout and would otherwise stay open over the next page. */}
+              <Link
+                href={`/order?id=${encodeURIComponent(placed.id)}`}
+                onClick={onClose}
+                className="clay-btn-soft flex-1 px-6 py-3 text-center text-sm font-bold"
+              >
+                Open booking page
+              </Link>
+              <button
+                type="button"
+                onClick={onClose}
+                className="clay-btn-soft flex-1 px-6 py-3 text-sm font-bold"
+              >
+                Close
+              </button>
+            </div>
+            <p className="text-ink-muted mt-3 text-center text-xs">
+              You can close this — your booking stays on this device under “Your booking”
+              at the bottom of the page.
+            </p>
+          </div>
+        ) : placed ? (
           <div>
             <h2 id="checkout-title" className="font-display text-ink text-3xl">
               Order created

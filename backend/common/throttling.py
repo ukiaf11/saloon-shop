@@ -17,13 +17,34 @@ purely on this class.
 from __future__ import annotations
 
 import logging
+import re
 
+from django.core.exceptions import ImproperlyConfigured
 from rest_framework.throttling import ScopedRateThrottle
 
 logger = logging.getLogger(__name__)
 
+_PERIOD = re.compile(r"^(\d*)\s*([smhd])", re.IGNORECASE)
+_UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
 
 class ResilientScopedRateThrottle(ScopedRateThrottle):
+    def parse_rate(self, rate):
+        """Accept a multiplied period such as "5/15min" as well as "10/min".
+
+        DRF reads only the first character of the period, so "15min" became a
+        KeyError on "1" -- which allow_request below then swallowed, leaving
+        that scope silently unthrottled and logging a misleading cache error.
+        """
+        if rate is None:
+            return (None, None)
+        num, period = rate.split("/")
+        match = _PERIOD.match(period.strip())
+        if match is None:
+            raise ImproperlyConfigured(f"Unparseable throttle rate {rate!r}.")
+        multiplier = int(match.group(1) or 1)
+        return int(num), multiplier * _UNIT_SECONDS[match.group(2).lower()]
+
     def allow_request(self, request, view) -> bool:
         try:
             return super().allow_request(request, view)

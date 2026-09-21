@@ -1,10 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Nunito } from "next/font/google";
 
-import { SelectionCart } from "@/components/cart/selection-cart";
-import { Footer } from "@/components/layout/footer";
-import { Navbar } from "@/components/layout/navbar";
-import { CartProvider } from "@/lib/cart";
+import { SALON_NAME } from "@/lib/site";
 
 import "./globals.css";
 
@@ -23,8 +20,6 @@ const nunito = Nunito({
   variable: "--font-body-loaded",
   display: "swap",
 });
-
-const SALON_NAME = "Upendra Salon";
 
 export const metadata: Metadata = {
   title: {
@@ -66,15 +61,9 @@ export default function RootLayout({
         >
           Skip to content
         </a>
-        {/* The provider wraps the whole tree so a service card anywhere on the
-            page can add to the same cart the sticky bar reads. Server
-            Components stay server-rendered: only the islands are client. */}
-        <CartProvider>
-          <Navbar salonName={SALON_NAME} />
-          <main id="main">{children}</main>
-          <Footer salonName={SALON_NAME} />
-          <SelectionCart />
-        </CartProvider>
+        {/* The public site's chrome (navbar, footer, cart) lives in the (site)
+            group's layout, so the owner panel under /admin gets none of it. */}
+        {children}
       </body>
     </html>
   );

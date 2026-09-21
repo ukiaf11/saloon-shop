@@ -69,6 +69,20 @@ class OrderCreateView(APIView):
         return Response(serialize_order(order), status=201)
 
 
+def order_for_display(order_id) -> Order | None:
+    """An order with everything serialize_order reads, in a fixed few queries."""
+    return (
+        Order.objects.select_related(
+            "customer",
+            "lucky_decision__daily_campaign",
+            "slot_reservation__daily_campaign",
+        )
+        .prefetch_related("items", "payments", "refunds")
+        .filter(id=order_id)
+        .first()
+    )
+
+
 class OrderDetailView(APIView):
     """GET /orders/{id} -- recovery for a client that lost its response.
 
@@ -80,12 +94,7 @@ class OrderDetailView(APIView):
     throttle_scope = "public_read"
 
     def get(self, request, order_id):
-        order = (
-            Order.objects.select_related("customer")
-            .prefetch_related("items")
-            .filter(id=order_id)
-            .first()
-        )
+        order = order_for_display(order_id)
         if order is None:
             raise NotFound("Order not found.")
         return Response(serialize_order(order))

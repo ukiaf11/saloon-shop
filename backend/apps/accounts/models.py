@@ -84,3 +84,34 @@ class LoginAttempt(UUIDModel, TimestampedModel):
     class Meta:
         db_table = "login_attempt"
         indexes = [models.Index(fields=["email", "created_at"])]
+
+
+class AdminSession(UUIDModel, TimestampedModel):
+    """A signed-in owner-panel session, presented as a bearer token.
+
+    Bearer rather than a cookie because the site and the API live on different
+    registrable domains (each `*.vercel.app` host is its own site), where a
+    session cookie is third-party and browsers increasingly drop it.
+
+    Only the SHA-256 of the token is stored: a leaked database dump must not
+    hand out working sessions.
+    """
+
+    user = models.ForeignKey(AdminUser, on_delete=models.CASCADE, related_name="sessions")
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        db_table = "admin_session"
+        indexes = [models.Index(fields=["user", "expires_at"])]
+
+    def __str__(self) -> str:
+        return f"session for {self.user_id} until {self.expires_at:%Y-%m-%d %H:%M}"
+
+    @property
+    def is_active(self) -> bool:
+        return self.revoked_at is None and self.expires_at > timezone.now()

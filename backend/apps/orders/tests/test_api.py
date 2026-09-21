@@ -125,9 +125,17 @@ def test_create_returns_201_and_the_contract_shape(client, config, haircut, shav
         "created_at",
         "customer",
         "items",
+        "paid_at",
+        "payment",
+        "lucky",
     }
     assert d["status"] == "DRAFT"
     assert d["total_paise"] == 40500
+    # A fresh order has paid nothing and entered nothing.
+    assert d["paid_at"] is None
+    assert d["payment"]["status"] == "not_started"
+    assert d["lucky"]["status"] == "pending"
+    assert d["lucky"]["participant_number"] is None
 
 
 def test_create_never_echoes_the_full_phone_number(client, config, haircut, shaving):

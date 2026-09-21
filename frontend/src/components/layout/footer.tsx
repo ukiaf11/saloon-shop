@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { ScissorsArt } from "@/components/clay/clay-art";
 
 const POLICY_LINKS = [
@@ -42,6 +44,12 @@ export function Footer({ salonName }: { salonName: string }) {
           <a href="/credits" className="hover:text-ink underline">
             Photo credits
           </a>
+          {" · "}
+          {/* Where a customer returns to see whether the salon has confirmed
+              their UPI payment. */}
+          <Link href="/order" className="hover:text-ink underline">
+            Your booking
+          </Link>
         </p>
       </div>
     </footer>
