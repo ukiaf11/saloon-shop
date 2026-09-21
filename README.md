@@ -9,6 +9,8 @@ coupons and a role-based admin panel.
 
 **Status:** Phases 1–4 complete (foundation; catalog & content; quote & orders; daily campaign & lucky engine). See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
+**Live (Vercel, noindex until launch):** site <https://saloon-shop-web.vercel.app> · API <https://saloon-shop-api.vercel.app/api/v1/services>
+
 | Document | Contents |
 |---|---|
 | [memory.md](memory.md) | Project state, invariants, open questions — **read this first** |
@@ -101,16 +103,36 @@ frontend Zod schemas both answer to them.
 
 ## Deployment
 
-Two paths, and they are **not** equivalent.
+### Vercel (production)
 
-### Railway (the real one — ready, awaiting plan upgrade)
+Two Vercel projects deploy from this repo, in `sin1` (Singapore), and redeploy
+on every push to `main` through Vercel's GitHub integration:
 
-`scripts/railway_provision.py` creates the project, Postgres and Redis from
-Railway's official templates, the backend / worker / beat / frontend services, a
-media volume, domains and cross-wired CORS. Railway currently refuses new
-resources on the free plan. Once credits are added: allow Railway's GitHub app
-to read this repo, run the script with `RAILWAY_API_KEY`, then run the seed
-commands it prints. Railway's repo integration redeploys on every push.
+| Project | Root | URL |
+|---|---|---|
+| `saloon-shop-web` | `frontend/` | <https://saloon-shop-web.vercel.app> |
+| `saloon-shop-api` | `backend/` | <https://saloon-shop-api.vercel.app> |
+
+- **Database:** Neon Postgres (`saloon-db`, Singapore) from the Vercel
+  Marketplace. Functions use the pooled `DATABASE_URL`; migrations use the
+  direct `DATABASE_URL_UNPOOLED`.
+- **Backend build** (`backend/vercel_build.py`, wired through
+  `[tool.vercel.scripts]` in `pyproject.toml`) runs `migrate` and
+  `createcachetable` on **production builds only**. Previews of the backend are
+  skipped (`ignoreCommand` in `backend/vercel.json`) because they would share
+  the production database. `SEED_ON_BUILD=1` seeds a fresh database once;
+  remove it afterwards.
+- **No Redis, no Celery on Vercel.** The cache is Django's database cache.
+  The midnight rollover is a Vercel Cron (`0 19 * * *` UTC = 00:30 IST) calling
+  `/api/v1/internal/cron/daily-rollover` with `Authorization: Bearer $CRON_SECRET`.
+  On Hobby, cron runs once a day and may fire up to an hour late. That is safe
+  because campaigns are also provisioned lazily and reservations expire
+  lazily.
+- **Media uploads do not persist** (function filesystems are read-only and
+  ephemeral). Object storage must be wired before the admin panel can upload
+  images.
+- **Hobby is for non-commercial use.** Move to Pro before taking real bookings.
+  Pro also allows per-minute cron, which Phase 5 needs for payment reconciliation.
 
 ### Container images
 
@@ -124,13 +146,14 @@ ghcr.io/ukiaf11/saloon-shop/frontend:latest
 
 Also tagged by commit SHA, so a deploy can pin an exact build. The backend image
 is smoke-tested with `manage.py check --deploy` before it is considered good.
-Any host that runs containers can pull these. There is no deploy job yet because
-there is no server yet — add one when there is.
+Any host that runs containers can pull these. Vercel does not use them. They are
+for any host that runs containers.
 
 ### GitHub Pages (the fallback preview)
 
 `pages.yml` publishes a **static export** to
-<https://ukiaf11.github.io/saloon-shop/>.
+<https://ukiaf11.github.io/saloon-shop/>. Now that Vercel is live it runs
+**only when started by hand** (Actions → Deploy preview to GitHub Pages → Run workflow).
 
 Be precise about what this is. GitHub Pages serves static files; it cannot run
 Node or Django. So the Pages site is a preview of the marketing page, not the

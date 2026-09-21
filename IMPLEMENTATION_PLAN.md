@@ -192,6 +192,14 @@ across Python versions — an auditor can re-derive any past day in any language
 
 ## Phase 5 — Payments (6–8 days) ⚠️ high risk
 
+> **Hosting constraint (Vercel, since 2026-09-21).** There is no Celery worker
+> or beat on Vercel. `reconcile_payments` and `retry_pending_refunds` are
+> scheduled every minute in `config/celery.py`, but Vercel Hobby cron runs once
+> a day. Before this phase ships, either move to **Vercel Pro**, where cron can
+> run every minute, or use an external scheduler. Then expose each job the way
+> `common/cron.py` exposes the daily rollover. Webhook handling must finish
+> inside the request (30s function limit) and must not assume a task queue.
+
 **Backend**
 - [ ] `PaymentGateway` abstract interface (`create_order`, `verify_client_payment`, `verify_webhook`, `fetch_payment`, `refund`).
 - [ ] `RazorpayGateway` implementation; `CashfreeGateway` stub proving the abstraction holds.
@@ -289,6 +297,13 @@ Scope locked: **reward-attributable-only** (`REQUIREMENTS.md` §8.1).
 ---
 
 ## Phase 10 — Production & launch (4–5 days)
+
+> **Hosting is Vercel + Neon** (live since 2026-09-21: `saloon-shop-web`,
+> `saloon-shop-api`, Neon `saloon-db`, all in Singapore). Done already:
+> migrate-on-deploy, the daily-rollover cron with a verified secret, CORS/CSRF,
+> HSTS, noindex. Still needed for launch: **Vercel Pro** (Hobby is
+> non-commercial), a custom domain (Deployment Protection then leaves it
+> public), **object storage for media**, and a Neon backup/restore drill.
 
 - [ ] Staging environment mirroring production; smoke-test suite.
 - [ ] Cloudflare: DNS, TLS, WAF rules, caching policy.

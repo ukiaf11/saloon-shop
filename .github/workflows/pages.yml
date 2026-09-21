@@ -1,6 +1,7 @@
 name: Deploy preview to GitHub Pages
 
-# The fallback host when no application server is available.
+# The fallback host when no application server is available. Production now
+# runs on Vercel (see README), so this is kept for a manual run only.
 #
 # READ THIS BEFORE RELYING ON IT: GitHub Pages serves static files only. It
 # cannot run Node or Django, so this deployment is a preview of the marketing
@@ -18,9 +19,9 @@ name: Deploy preview to GitHub Pages
 # It is deliberately noindex by default (see the NEXT_PUBLIC_NOINDEX var below)
 # so a preview that cannot take a booking never outranks the real site.
 
+# Manual only since Vercel became the real host: publishing a second, frozen
+# copy of the site on every push would only compete with it.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

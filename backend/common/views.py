@@ -18,11 +18,13 @@ def readiness(_request):
     except Exception as exc:  # pragma: no cover - surfaced via the probe
         checks["database"] = f"error: {type(exc).__name__}"
 
+    # Named for the role, not the backend: Redis locally, the database cache
+    # table on Vercel.
     try:
         cache.set("readiness", "1", 5)
-        checks["redis"] = "ok" if cache.get("readiness") == "1" else "error"
+        checks["cache"] = "ok" if cache.get("readiness") == "1" else "error"
     except Exception as exc:  # pragma: no cover
-        checks["redis"] = f"error: {type(exc).__name__}"
+        checks["cache"] = f"error: {type(exc).__name__}"
 
     healthy = all(v == "ok" for v in checks.values())
     return Response(

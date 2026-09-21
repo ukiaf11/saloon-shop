@@ -26,8 +26,8 @@ const PUBLIC_API_BASE_URL =
  *
  * Two different callers need two different addresses. Server rendering (and the
  * static export's build step) can reach the API over a private network -- the
- * GitHub Pages build talks to a backend running inside the CI job, and on
- * Railway it can use the internal hostname. The browser needs the public URL.
+ * GitHub Pages build talks to a backend running inside the CI job, and a
+ * container host can use an internal hostname. The browser needs the public URL.
  * With a single variable, the Pages build baked the CI job's 127.0.0.1 into the
  * bundle and every visitor's browser tried to call its own localhost.
  */

@@ -3,7 +3,7 @@
 > Working memory for this project. Read this first at the start of a session; update it at the end of one.
 > Keep it short and current — it is a state file, not a log archive. Details live in the docs it points to.
 
-**Last updated:** 2026-09-21 (Phase 4 complete; claymorphism redesign; Railway-ready)
+**Last updated:** 2026-09-21 (Phase 4 complete; claymorphism redesign; **live on Vercel**)
 
 ---
 
@@ -23,13 +23,14 @@ The hard requirement underneath all of it: **every money and promotion decision 
 |---|---|
 | **Phase** | ✅ Phases 1–4 complete. Phase 5 (payments) is next — **blocked on Razorpay test keys**. |
 | **Code** | `backend/` (Django 5 + DRF, uv-managed) and `frontend/` (Next 16, TS, Tailwind 4) both boot, migrate and pass their checks. |
-| **Repo** | <https://github.com/ukiaf11/saloon-shop> (**public**), branch `main`. CI, container images and Pages all green. |
+| **Repo** | <https://github.com/ukiaf11/saloon-shop> (**public**), branch `main`. CI and container images green; Pages is now manual-only. |
+| **Live** | <https://saloon-shop-web.vercel.app> + <https://saloon-shop-api.vercel.app> on Vercel Hobby with Neon, Singapore. noindex. See §16. |
 | **Specs** | Three source documents (see §3). |
 | **Derived docs** | `REQUIREMENTS.md`, `IMPLEMENTATION_PLAN.md`, `README.md`. |
 | **Engineering blockers** | None until Phase 4 (needs the wording decision) and Phase 5 (needs Razorpay keys). |
 | **Business track** | Owner to approve "5 Lucky Slots"; promotion/refund rules need drafting for legal. |
 
-**Verified working:** `docker compose` Postgres + Redis, migrations, all three seed commands, `/healthz` + `/api/v1/readiness`, Celery round-trip, JSON log redaction, CORS allowlist, image upload validation (rejects disguised non-images and SVG), the six public read endpoints against the contract, the public page rendering real seeded data with full JSON-LD, the Next image optimizer on API-served media. **293 tests pass** (235 backend, 58 frontend); ruff + eslint + tsc + prettier + `check --deploy` all clean.
+**Verified working:** `docker compose` Postgres + Redis, migrations, all three seed commands, `/healthz` + `/api/v1/readiness`, Celery round-trip, JSON log redaction, CORS allowlist, image upload validation (rejects disguised non-images and SVG), the six public read endpoints against the contract, the public page rendering real seeded data with full JSON-LD, the Next image optimizer on API-served media. **301 tests pass** (243 backend, 58 frontend); ruff + eslint + tsc + prettier + `check --deploy` all clean.
 
 **Not yet measured:** Lighthouse mobile score (Phase 2 exit gate names it; needs a real device/CI run).
 
@@ -355,7 +356,7 @@ by deleting `.env` entirely and re-running: 231 pass.
 will be the first, and `tests/test_no_secret_leaks.py` must be updated to allow
 it — deliberately, so adding a caller is a conscious act.
 
-## 13. Claymorphism redesign, images, mobile, Railway-readiness (2026-09-21)
+## 13. Claymorphism redesign, images, mobile (2026-09-21)
 
 ### Design system (`frontend/src/app/globals.css`)
 Warm clay palette, dual inner shadow + soft drop shadow, generous radii. Utilities:
@@ -402,23 +403,12 @@ With no public API configured, `NEXT_PUBLIC_BOOKING_ENABLED=0`: Add becomes
 "Book in salon", the cart tray and campaign poll stand down (a stale cart in
 localStorage is guarded too).
 
-### Railway — blocked on the plan, not on the code
-Project creation was refused: *"Free plan resource provision limit exceeded."*
-The existing project `appealing-surprise` holds an unrelated app (`Hotel-Web`)
-and was left alone. Everything else is done and verified against the real
-production images:
-- gunicorn binds `$PORT`; `/healthz` exempt from the HTTPS redirect; the
-  healthcheck host is allowed; JSON-only renderer; media from a volume.
-- **Throttling fails open** when Redis is down — a Redis blip previously 500'd
-  the whole API. Verified by stopping Redis: site stays up, `/readiness` reports it.
-- `scripts/railway_provision.py` provisions everything; every mutation, arg and
-  input field was checked against Railway's live schema by introspection.
-- The Railway CLI rejects this token (it calls `me`); the GraphQL API accepts it.
-
-**To go live once credits are added:** (1) in Railway, allow its GitHub app to
-read `ukiaf11/saloon-shop`; (2) `RAILWAY_API_KEY=... python scripts/railway_provision.py`;
-(3) run the four seed commands it prints. Railway's repo integration is then the
-CD — do not add a separate deploy Action, it would double-deploy.
+### Railway — superseded by Vercel
+Railway refused provisioning ("Free plan resource provision limit exceeded"),
+and the user then chose Vercel. The Railway files were removed in b01bd2a. Two
+fixes from that work remain and are still worth having: **throttling fails
+open** when the cache is down (a Redis blip used to 500 the whole API), and
+`/healthz` is exempt from the HTTPS redirect.
 
 ## 14. Next actions
 
@@ -440,6 +430,11 @@ reveal**. The end-of-day-draw alternative is off the table.
 **Business — unblock Phase 4:** get the "5 Lucky Slots" wording signed off.
 
 **External — unblock Phase 5:** Razorpay onboarding, test keys, webhook URL.
+
+**Before launch (hosting):** Vercel **Pro** (Hobby is non-commercial, and
+Phase 5 needs per-minute cron), a custom domain, object storage for media, a
+real owner account (the seeded `owner@example.com` is a placeholder), real
+salon content, and approved legal copy.
 
 **Housekeeping:** `pre-commit install` has not been run locally yet — do it so
 gitleaks guards commits before they leave the machine (CI scans too, but that is
@@ -468,7 +463,7 @@ must stay valueless.
 |---|---|---|
 | `ci.yml` | PR + `main` | ruff/format/migration-check/pytest (Postgres+Redis services), eslint/tsc/prettier/vitest/build, gitleaks + pip-audit + npm audit, Docker builds |
 | `cd-images.yml` | `main`, tags | Builds both prod images to GHCR tagged `latest`/`main`/`sha-…`; smoke-tests the backend with `check --deploy` |
-| `pages.yml` | `main` | Static export to <https://ukiaf11.github.io/saloon-shop/> |
+| `pages.yml` | manual only | Static export to <https://ukiaf11.github.io/saloon-shop/> (the fallback, now that Vercel is live) |
 
 **The Pages deploy is a preview, not the product.** Pages runs no Node and no
 Django, so: no API behind it, content frozen at build time (empty if no API was
@@ -491,3 +486,66 @@ Repo variables `PUBLIC_API_BASE_URL`, `PUBLIC_MEDIA_HOSTNAME` and
 **Static export requires** `export const dynamic = "force-static"` on
 `robots.ts` and `sitemap.ts`, `images.unoptimized`, `trailingSlash`, and a
 `basePath` of `/<repo>` for a project page.
+
+## 16. Vercel deployment (live 2026-09-21)
+
+| Resource | Id / name | Notes |
+|---|---|---|
+| Team | `team_o0FjGZjNtmWvLc4iggJ32lgj` (upendras-projects-34931334) | Hobby plan. Also holds unrelated `hotel-web` projects; leave them alone |
+| API project | `saloon-shop-api` `prj_tVLVDzff9YtJ0e0fT78Fe3kZ4Lkv` | framework `django`, root `backend`, `sin1`, 30s max duration |
+| Web project | `saloon-shop-web` `prj_u7AMQDyMDCbGxh70MJQ9RX5CNeNr` | framework `nextjs`, root `frontend`, `sin1` |
+| Database | Neon store `saloon-db` `store_HNHNxfv1ChZLh0op` (Neon `cool-sound-64875082`) | Singapore, connected to the API project for production only |
+| Unused | Neon store `neon-violet-canvas` (iad1) | Created by the user before the region decision. Safe to delete |
+
+**How it runs.** Both projects are linked to `ukiaf11/saloon-shop`, and every
+push to `main` redeploys both. The backend skips preview builds
+(`ignoreCommand`) because a preview would migrate the production database. A
+production build runs `backend/vercel_build.py`, which does `migrate` and
+`createcachetable` against `DATABASE_URL_UNPOOLED`. The cache is the database
+cache; there is no Redis. There is also no Celery. The only scheduled job is the
+Vercel Cron `0 19 * * *` UTC calling `common/cron.py`.
+
+**Verified live:** healthz, readiness (db + cache), catalog, today's campaign,
+the cron gate (401 without the secret, 200 with it), CORS both ways, the
+Idempotency-Key preflight, HSTS, no debug pages, and robots/meta noindex. Also
+tested in real Chrome: add two services, cross-origin quote gives ₹450 − ₹45 =
+₹405, checkout sheet opens, zero console errors, no horizontal scroll at 390px.
+
+**Verified, not just assumed: cron gets through Deployment Protection.**
+Vercel calls the cron on the *deployment* URL
+(`saloon-shop-<hash>-….vercel.app`). Anonymous requests to that URL get a 302
+to the Vercel login page. A `vercel crons run` still reached Django, passed the
+`CRON_SECRET` check and logged `daily_campaign_rollover`. `VERCEL_URL` is in
+`ALLOWED_HOSTS` for exactly this reason.
+
+**Traps hit, so they are not hit again:**
+- Vercel's Django preset serves **ASGI whenever `ASGI_APPLICATION` is set**, so
+  it was removed; the app is WSGI.
+- `config/__init__` imports Celery before `wsgi.py` runs, so `config/celery.py`
+  has to default `DJANGO_SETTINGS_MODULE` to production.
+- `[tool.uv] package = false` is required, or `uv sync` tries to build the
+  project as a package. It changed exactly one `uv.lock` line
+  (`editable` → `virtual`).
+- A user token cannot call `/v1/installations/{id}/resources` (403). The CLI's
+  route works: `POST /v1/storage/stores/{storeId}/connections`.
+- Creating a project does not trigger a build. The first deploy has to be
+  `POST /v13/deployments` with a `gitSource`.
+- Neon behind PgBouncer (transaction mode) needs `CONN_MAX_AGE=0` and
+  `DISABLE_SERVER_SIDE_CURSORS=True`.
+- Historical logs: `vercel logs --since 3h --json`. The REST runtime-logs
+  endpoint only streams new lines.
+- To run the Vercel CLI without exposing the token, set `VERCEL_TOKEN` in the
+  environment, use a scratch `.vercel/project.json` with `projectId` and
+  `orgId`, and pass `-Q <scratch dir>`.
+
+**Env vars (names only; values live in Vercel and the root `.env`).** API:
+`DJANGO_SETTINGS_MODULE`, `DJANGO_SECRET_KEY`, `FIELD_ENCRYPTION_KEY`,
+`CRON_SECRET`, `PAYMENT_GATEWAY_MODE=test`, `DJANGO_ALLOWED_HOSTS`,
+`CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, plus 16 injected by Neon. The
+one-off `SEED_*` vars were **deleted** after the first build. Web:
+`NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_SITE_URL`,
+`NEXT_PUBLIC_BOOKING_ENABLED=1`, `NEXT_PUBLIC_NOINDEX=1`. Changing a
+`NEXT_PUBLIC_*` value needs a **rebuild**, because it is inlined at build time.
+
+**Rotating `FIELD_ENCRYPTION_KEY` makes stored lucky seeds unreadable.** Do not
+change it without a re-encryption migration.

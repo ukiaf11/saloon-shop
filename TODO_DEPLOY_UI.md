@@ -1,4 +1,4 @@
-# Task list — Railway deploy, images, claymorphism redesign, Phase 5
+# Task list — deploy, images, claymorphism redesign, Phase 5
 
 Order: deploy first so every later push reaches production automatically,
 then the redesign, then Phase 5.
@@ -58,9 +58,9 @@ then the redesign, then Phase 5.
 
 ## Status (2026-09-21)
 
-- **A. Railway** — everything done and verified against the real production
-  images **except provisioning**, which Railway refuses on the current plan.
-  One command once credits exist (see memory.md §13).
+- **A. Railway** — superseded. Railway refused provisioning on its plan, and the
+  user then chose Vercel. The Railway files were removed in b01bd2a.
+- **A′. Vercel** — ✅ live and verified 2026-09-21 (see memory.md §16).
 - **B. Images** — done: original clay illustrations + 3 CC BY photos, credited.
 - **C. Claymorphism** — done, AA contrast measured, mobile audited at 4 widths.
 - **D. Phase 5** — not started this session; still needs Razorpay test keys.
