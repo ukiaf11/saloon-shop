@@ -90,6 +90,16 @@ Response `200`: the full order, as `GET /orders/{id}`.
 | 409 | `duplicate_reference` | That reference backs another live payment |
 | 409 | `order_not_payable` | Already paid, or not in a payable state |
 | 403 | `customer_blocked` | Customer blocked by the owner |
+| 429 | `too_many_pending_claims` | This network already has `UPI_CLAIM_MAX_PENDING_PER_IP` (3) claims awaiting the owner. The limit is DB-backed and does not fail open |
+
+Claims are accepted while the QR is live, and for **48 hours after the owner
+removes it**, for orders placed before the removal. A customer who was
+mid-payment can still record the money they sent. Once a gateway is
+configured, claims are never accepted.
+
+At confirmation, an order skipped as `REPEAT_ENTRY` or `DAY_FULL` is
+**re-checked** against the same day's draw. For example, if the other claim
+from that phone was rejected, the order enters.
 
 ### Order payload additions (`GET /orders/{id}`, `POST /orders`, the claim)
 
@@ -120,6 +130,9 @@ Response `200`: the full order, as `GET /orders/{id}`.
   customer.
 - `held` says a place is kept. It says nothing about winning. Winning positions
   never reach any response.
+- The public `GET /promotion/today` `slots_remaining` and `is_open` subtract
+  places held by unconfirmed claims, the same arithmetic admission uses. A
+  free-looking slot is therefore never one a pending claim has already taken.
 - `reason` (when `not_entered`): `REPEAT_ENTRY` (this phone already entered that
   day, per `max_entries_per_phone_per_day`), `DAY_FULL`, `DAY_CLOSED` (confirmed
   after the day ended, even if the nightly close had not run yet),
@@ -218,6 +231,11 @@ can no longer enter the day it was claimed on.
 
 ### `POST /api/v1/owner/payments/{id}/confirm`
 
+`{ "reference": "the 12-digit UTR the owner checked" }`, **required**. If the
+customer corrected the reference after the owner's list loaded, the response
+is `409 payment_changed` and nothing is decided. Without this guard, a
+reference freed by a correction could back a second order.
+
 One transaction: the payment becomes `CONFIRMED`, the order becomes `PAID` and
 `paid_at` is set, then the lucky decision runs. If the order entered the draw,
 `paid_count` goes up and it gets the next `participant_number`, which is
@@ -228,7 +246,7 @@ was already decided. Locks are always taken order first, then payment.
 
 ### `POST /api/v1/owner/payments/{id}/reject`
 
-`{ "reason": "optional, ≤200 chars, shown to the customer" }`. The payment
+`{ "reference": "required, as for confirm", "reason": "optional, ≤200 chars, shown to the customer" }`. The payment
 becomes `REJECTED`, the order becomes `PAYMENT_FAILED`, and the draw hold is
 cancelled. The reference is freed for a retry.
 

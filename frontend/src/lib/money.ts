@@ -36,3 +36,19 @@ export function formatInr(paise: number): string {
     ? `₹${grouped}`
     : `₹${grouped}.${String(remainder).padStart(2, "0")}`;
 }
+
+/**
+ * Parse the owner's rupee input ("350", "349.50") into integer paise.
+ *
+ * This is input decoding, not price arithmetic: the string is turned into the
+ * integer the API expects, digit by digit, so float rounding can never shave a
+ * paisa off. Returns null for anything that is not a plain positive amount
+ * with at most two decimal places.
+ */
+export function rupeesToPaise(input: string): number | null {
+  const match = /^\s*₹?\s*(\d{1,7})(?:\.(\d{1,2}))?\s*$/.exec(input);
+  if (!match) return null;
+  const rupees = Number(match[1]);
+  const paise = Number((match[2] ?? "").padEnd(2, "0") || "0");
+  return rupees * 100 + paise;
+}

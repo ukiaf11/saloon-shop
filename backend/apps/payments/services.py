@@ -19,6 +19,7 @@ be able to deadlock the two.
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import io
 import logging
@@ -32,7 +33,7 @@ from django.utils import timezone
 from apps.accounts.services import confirm_password
 from apps.audit.services import record
 from apps.customers.services import CustomerBlocked
-from apps.orders.models import Order
+from apps.orders.models import LuckySkipReason, Order
 from apps.orders.state import OrderStatus
 from apps.payments.models import (
     LIVE_PAYMENT_STATUSES,
@@ -42,9 +43,14 @@ from apps.payments.models import (
     PaymentStatus,
 )
 from apps.promotions.models import ReservationStatus, SlotReservation
-from apps.promotions.services import decide_lucky, hold_draw_entry
+from apps.promotions.services import (
+    decide_lucky,
+    hold_draw_entry,
+    salon_local_date,
+    salon_today,
+)
 from apps.refunds.services import create_lucky_refund
-from common.exceptions import ConflictError, NotFound, ValidationFailed
+from common.exceptions import ConflictError, DomainError, NotFound, ValidationFailed
 from common.images import validate_image_file
 from common.locks import lock_row, lock_row_or_none
 
@@ -89,6 +95,25 @@ class OrderNotPayable(ConflictError):
 class PaymentAlreadyDecided(ConflictError):
     code = "payment_already_decided"
     message = "This payment has already been confirmed or rejected."
+
+
+class PaymentChanged(ConflictError):
+    """The customer corrected the reference after the owner's list loaded."""
+
+    code = "payment_changed"
+    message = (
+        "The customer changed the UPI reference after your list loaded. "
+        "Refresh and check the new reference before deciding."
+    )
+
+
+class TooManyPendingClaims(DomainError):
+    code = "too_many_pending_claims"
+    http_status = 429
+    message = (
+        "Several payments from this network are still waiting for the salon to "
+        "check them. Please wait for those to be confirmed, or contact the salon."
+    )
 
 
 # --- which method is live ----------------------------------------------------
@@ -240,6 +265,25 @@ def update_payment_settings(
 # --- customer: claiming a payment ----------------------------------------------
 
 
+def accepts_claims(order: Order) -> bool:
+    """Whether a UPI reference may be sent for this order right now.
+
+    Yes while the QR is live. Also yes for a short grace period after the owner
+    removes it, for orders placed before the removal: those customers may have
+    been shown the QR and paid, and refusing their reference would strand real
+    money with no record. Never once a gateway is configured.
+    """
+    row = get_settings(order.salon)
+    method = payment_method(order.salon, row)
+    if method == PaymentMethod.UPI_QR:
+        return True
+    if method != PaymentMethod.UNAVAILABLE or row is None or row.qr_updated_at is None:
+        return False
+    removed_at = row.qr_updated_at
+    grace = dt.timedelta(hours=settings.UPI_CLAIM_GRACE_AFTER_QR_REMOVED_HOURS)
+    return order.created_at <= removed_at and timezone.now() <= removed_at + grace
+
+
 def normalise_reference(raw: str) -> str:
     reference = re.sub(r"[\s-]", "", raw or "")
     if not UPI_REFERENCE.match(reference):
@@ -261,7 +305,7 @@ def _ensure_reference_free(reference: str, *, exclude_pk=None) -> None:
         raise DuplicateReference()
 
 
-def submit_upi_claim(order_id, raw_reference: str) -> Order:
+def submit_upi_claim(order_id, raw_reference: str, *, client_ip: str | None = None) -> Order:
     """The customer says they have paid. Records the claim and holds a draw place.
 
     Idempotent for the same reference, and a customer who typed the reference
@@ -273,7 +317,7 @@ def submit_upi_claim(order_id, raw_reference: str) -> Order:
         order = lock_row_or_none(Order.objects.select_related("salon", "customer"), pk=order_id)
         if order is None:
             raise NotFound("Order not found.")
-        if payment_method(order.salon) != PaymentMethod.UPI_QR:
+        if not accepts_claims(order):
             raise UpiPaymentsUnavailable()
         if order.customer.is_blocked:
             raise CustomerBlocked()
@@ -301,6 +345,15 @@ def submit_upi_claim(order_id, raw_reference: str) -> Order:
             raise OrderNotPayable()
 
         _ensure_reference_free(reference)
+        # DB-backed, not the cache throttle: this limit must hold even when the
+        # cache is down, because each claim holds one of the day's draw places.
+        if client_ip and (
+            Payment.objects.filter(
+                client_ip=client_ip, status=PaymentStatus.AWAITING_CONFIRMATION
+            ).count()
+            >= settings.UPI_CLAIM_MAX_PENDING_PER_IP
+        ):
+            raise TooManyPendingClaims()
         order.transition_to(OrderStatus.PAYMENT_PENDING)
         try:
             with transaction.atomic():
@@ -311,6 +364,7 @@ def submit_upi_claim(order_id, raw_reference: str) -> Order:
                     amount_paise=order.total_paise,
                     reference=reference,
                     submitted_at=timezone.now(),
+                    client_ip=client_ip,
                 )
         except IntegrityError as exc:
             # Lost a race with another claim on the same reference.
@@ -327,7 +381,9 @@ def submit_upi_claim(order_id, raw_reference: str) -> Order:
 # --- owner: deciding a claim -------------------------------------------------------
 
 
-def _lock_order_then_payment(payment_id) -> tuple[Order, Payment]:
+def _lock_order_then_payment(
+    payment_id, expected_reference: str | None = None
+) -> tuple[Order, Payment]:
     order_id = Payment.objects.filter(pk=payment_id).values_list("order_id", flat=True).first()
     if order_id is None:
         raise NotFound("Payment not found.")
@@ -335,10 +391,17 @@ def _lock_order_then_payment(payment_id) -> tuple[Order, Payment]:
     payment = lock_row(Payment.objects, pk=payment_id)
     if payment.status != PaymentStatus.AWAITING_CONFIRMATION:
         raise PaymentAlreadyDecided()
+    # The owner decided about the reference on their screen. If the customer
+    # has corrected it since, this decision is about a different claim -- and
+    # the freed reference could otherwise back a second order.
+    if expected_reference is not None and payment.reference != expected_reference:
+        raise PaymentChanged()
     return order, payment
 
 
-def confirm_upi_payment(payment_id, *, actor, request=None) -> Payment:
+def confirm_upi_payment(
+    payment_id, *, actor, expected_reference: str | None = None, request=None
+) -> Payment:
     """The owner found the money. Mark the order paid and decide its draw entry.
 
     One transaction, per Doc 2 section 16: the payment, the order, the draw
@@ -346,7 +409,7 @@ def confirm_upi_payment(payment_id, *, actor, request=None) -> Payment:
     at all.
     """
     with transaction.atomic():
-        order, payment = _lock_order_then_payment(payment_id)
+        order, payment = _lock_order_then_payment(payment_id, expected_reference)
         now = timezone.now()
 
         payment.status = PaymentStatus.CONFIRMED
@@ -357,6 +420,17 @@ def confirm_upi_payment(payment_id, *, actor, request=None) -> Payment:
         order.transition_to(OrderStatus.PAID, save=False)
         order.paid_at = now
         order.save(update_fields=["status", "paid_at", "updated_at"])
+
+        # A claim skipped as a repeat entry or a full day may have become
+        # eligible since -- the other claim from this phone was rejected, or a
+        # held place was freed. Re-check, but only for the day it was claimed:
+        # a payment never enters a later day's draw.
+        if (
+            not order.enters_lucky_campaign
+            and order.lucky_skip_reason in (LuckySkipReason.REPEAT_ENTRY, LuckySkipReason.DAY_FULL)
+            and salon_local_date(order.salon, payment.submitted_at) == salon_today(order.salon)
+        ):
+            hold_draw_entry(order, ttl_seconds=settings.UPI_CLAIM_HOLD_SECONDS)
 
         decision = decide_lucky(order, now=now)
         refund = None
@@ -381,11 +455,18 @@ def confirm_upi_payment(payment_id, *, actor, request=None) -> Payment:
     return payment
 
 
-def reject_upi_payment(payment_id, *, actor, reason: str = "", request=None) -> Payment:
+def reject_upi_payment(
+    payment_id,
+    *,
+    actor,
+    reason: str = "",
+    expected_reference: str | None = None,
+    request=None,
+) -> Payment:
     """The money is not there. The order can be paid again with a new claim."""
     reason = " ".join((reason or "").split())[:200]
     with transaction.atomic():
-        order, payment = _lock_order_then_payment(payment_id)
+        order, payment = _lock_order_then_payment(payment_id, expected_reference)
 
         payment.status = PaymentStatus.REJECTED
         payment.decided_at = timezone.now()

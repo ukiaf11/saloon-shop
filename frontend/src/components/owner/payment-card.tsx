@@ -183,7 +183,9 @@ export function PaymentCard({
             <button
               type="button"
               disabled={busy}
-              onClick={() => void act(() => confirmPayment(token, payment.id))}
+              onClick={() =>
+                void act(() => confirmPayment(token, payment.id, payment.reference))
+              }
               className="clay-btn flex-[2] px-4 py-3 text-sm font-bold"
             >
               {busy ? "Confirming…" : "Yes, received"}
@@ -221,7 +223,11 @@ export function PaymentCard({
             <button
               type="button"
               disabled={busy}
-              onClick={() => void act(() => rejectPayment(token, payment.id, reason))}
+              onClick={() =>
+                void act(() =>
+                  rejectPayment(token, payment.id, payment.reference, reason),
+                )
+              }
               className="clay-btn flex-[2] px-4 py-3 text-sm font-bold"
             >
               {busy ? "Rejecting…" : "Reject payment"}

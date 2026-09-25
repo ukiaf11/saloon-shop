@@ -10,6 +10,7 @@
 
 import { FaqSection } from "@/components/sections/faq";
 import { CampaignSection } from "@/components/sections/campaign";
+import { CraftBand } from "@/components/sections/craft-band";
 import { CtaBand } from "@/components/sections/cta-band";
 import { Hero } from "@/components/sections/hero";
 import { GallerySection } from "@/components/sections/gallery";
@@ -102,6 +103,9 @@ export default async function Home() {
           sitting in one section. */}
 
       <HowItWorksSection paymentMethod={paymentMethod} />
+
+      {/* A decorative strip of the craft: photos and clay art drifting by. */}
+      <CraftBand />
 
       <GallerySection images={gallery} />
       <TestimonialsSection testimonials={testimonials} />

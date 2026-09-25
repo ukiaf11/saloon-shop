@@ -293,3 +293,97 @@ body {
   color: var(--color-ink);
   font-weight: 700;
 }
+
+/* ---------------------------------------------------------------------------
+   Motion. Three primitives, all safe by construction:
+
+   1. `.enter-*`  — pure-CSS entrance for above-the-fold hero content. Runs on
+      load with no JS, and ends fully visible, so nothing can get stuck hidden.
+   2. `.reveal`   — scroll-triggered reveal, armed by components/reveal.tsx.
+      The hiding style only applies once JS adds `reveal-armed` to <html>, so
+      without JS (or before hydration) every section is simply visible.
+   3. `.clay-lift` — hover lift for cards, on hover-capable pointers only.
+
+   All three sit inside prefers-reduced-motion: no-preference; anyone who asked
+   for less motion gets a static page, not a delayed one.
+   ------------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes enter-up {
+    from {
+      opacity: 0;
+      transform: translateY(22px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .enter,
+  .enter-2,
+  .enter-3,
+  .enter-4 {
+    animation: enter-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .enter-2 {
+    animation-delay: 0.1s;
+  }
+  .enter-3 {
+    animation-delay: 0.2s;
+  }
+  .enter-4 {
+    animation-delay: 0.3s;
+  }
+
+  .reveal-armed .reveal {
+    opacity: 0;
+    transform: translateY(26px);
+    transition:
+      opacity 0.65s ease,
+      transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+
+  .reveal-armed .reveal-shown {
+    opacity: 1;
+    transform: none;
+  }
+
+  @media (hover: hover) {
+    .clay-lift {
+      transition:
+        transform 0.25s ease,
+        box-shadow 0.25s ease;
+    }
+    .clay-lift:hover {
+      transform: translateY(-5px);
+      box-shadow:
+        inset 6px 6px 12px rgb(255 255 255 / 0.85),
+        inset -6px -8px 16px rgb(150 100 70 / 0.16),
+        18px 26px 48px -14px rgb(110 70 45 / 0.34);
+    }
+    /* The card's illustration or photo leans in with it. */
+    .clay-lift .lift-media {
+      transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .clay-lift:hover .lift-media {
+      transform: scale(1.05);
+    }
+  }
+
+  /* The craft band: one slow, seamless loop. The track holds its tiles twice,
+     so -50% lands exactly where it started. Pauses while hovered so the
+     photos can actually be looked at. */
+  @keyframes craft-marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  .craft-track {
+    animation: craft-marquee 48s linear infinite;
+  }
+  .craft-band:hover .craft-track {
+    animation-play-state: paused;
+  }
+}

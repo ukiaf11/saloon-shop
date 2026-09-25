@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import heroPhoto from "@/assets/photos/barber-comb-portrait.webp";
 
@@ -47,40 +48,40 @@ export function Hero({
     <section className="px-4 pt-8 pb-10 sm:pt-14 sm:pb-12">
       <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.05fr_1fr] lg:gap-16">
         <div>
-          <p className="clay-sm text-primary inline-block px-4 py-1.5 text-xs font-bold tracking-[0.14em] uppercase">
+          <p className="clay-sm text-primary enter inline-block px-4 py-1.5 text-xs font-bold tracking-[0.14em] uppercase">
             {HERO.eyebrow}
           </p>
-          <h1 className="font-display text-ink mt-6 text-[2.75rem] leading-[1.02] sm:text-6xl lg:text-7xl">
+          <h1 className="font-display text-ink enter-2 mt-6 text-[2.75rem] leading-[1.02] sm:text-6xl lg:text-7xl">
             {HERO.heading}
           </h1>
-          <p className="text-ink-soft mt-6 max-w-xl text-lg sm:text-xl">
+          <p className="text-ink-soft enter-3 mt-6 max-w-xl text-lg sm:text-xl">
             Hair cutting, shaving and a face massage —{" "}
             <strong className="text-ink">free</strong> for each day&apos;s lucky slots.
             Pick two or more services and <strong className="text-ink">save 10%</strong>{" "}
             automatically.
           </p>
 
-          <div className="mt-9 flex flex-wrap gap-3">
-            <a href="#services" className="clay-btn px-8 py-4 text-base font-bold">
+          <div className="enter-4 mt-9 flex flex-wrap gap-3">
+            <Link href="/#services" className="clay-btn px-8 py-4 text-base font-bold">
               Book your services
-            </a>
-            <a href="#offers" className="clay-btn-soft px-7 py-4 text-base font-bold">
+            </Link>
+            <Link href="/#offers" className="clay-btn-soft px-7 py-4 text-base font-bold">
               How it works
-            </a>
+            </Link>
           </div>
 
           <p className="text-ink-muted mt-6 text-sm">
             Daily promotional capacity and campaign rules apply.{" "}
-            <a
+            <Link
               href="/promotion-rules"
               className="text-primary py-3 font-semibold underline"
             >
               View promotion rules
-            </a>
+            </Link>
           </p>
         </div>
 
-        <div className="relative mx-auto w-full max-w-md lg:max-w-none">
+        <div className="enter-3 relative mx-auto w-full max-w-md lg:max-w-none">
           {/* The photo sits in a clay frame: a raised surface with the image
               inset, so it belongs to the same world as the rest of the page. */}
           <div className="clay p-3 sm:p-4">
@@ -122,8 +123,20 @@ export function Hero({
           <Badge
             art={<CardArt size={42} />}
             // Cards need the gateway; the QR fallback takes UPI only.
-            title={paymentMethod === "upi_qr" ? "Pay by UPI" : "UPI & cards"}
-            detail={paymentMethod === "upi_qr" ? "any UPI app" : "secure checkout"}
+            title={
+              paymentMethod === "upi_qr"
+                ? "Pay by UPI"
+                : paymentMethod === "unavailable"
+                  ? "Book online"
+                  : "UPI & cards"
+            }
+            detail={
+              paymentMethod === "upi_qr"
+                ? "any UPI app"
+                : paymentMethod === "unavailable"
+                  ? "pay at the salon"
+                  : "secure checkout"
+            }
             // Hidden on a phone: at ~330px the photo cannot carry three
             // badges without one covering the photo credit.
             className="clay-float -bottom-5 left-8 hidden sm:flex"

@@ -269,7 +269,9 @@ Scope locked: **reward-attributable-only** (`REQUIREMENTS.md` §8.1).
 ## Phase 8 — Admin panel (8–10 days)
 
 > Started by the UPI QR fallback: `/admin` has sign-in, payment confirmation,
-> refunds, the payment QR and password change, all OWNER-only.
+> refunds, the payment QR and password change (OWNER-only), plus **Services &
+> prices** (OWNER + MANAGER, 2026-09-25): audited price changes, hide/show,
+> Popular, duration — `API_CONTRACT_OWNER_CATALOG.md`.
 
 - [ ] Admin auth: login ✅, **TOTP MFA ❌ still to do**, sessions ✅ (bearer tokens hashed server-side rather than cookies, because the site and API are different sites on `*.vercel.app`), DB-backed lockout ✅, step-up re-auth ✅ (password) for payment settings and password changes.
 - [ ] RBAC permission classes + the matrix from `REQUIREMENTS.md` §5, enforced at both API and UI layers.

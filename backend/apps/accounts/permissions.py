@@ -18,3 +18,16 @@ class IsOwner(IsSignedIn):
 
     def has_permission(self, request, view) -> bool:
         return super().has_permission(request, view) and request.user.role == Role.OWNER
+
+
+class IsOwnerOrManager(IsSignedIn):
+    """OWNER or MANAGER. The REQUIREMENTS.md section 5 matrix gives service
+    management and price changes to both; money movement stays owner-only."""
+
+    message = "Only the salon owner or manager can do this."
+
+    def has_permission(self, request, view) -> bool:
+        return super().has_permission(request, view) and request.user.role in (
+            Role.OWNER,
+            Role.MANAGER,
+        )

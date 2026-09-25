@@ -58,6 +58,8 @@ export const apiErrorSchema = z.object({
     code: z.string(),
     message: z.string(),
     request_id: z.string().nullable().optional(),
+    /** Structured context the server chose to share, e.g. stale service ids. */
+    details: z.record(z.string(), z.unknown()).optional(),
   }),
 });
 
@@ -67,6 +69,7 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly requestId?: string | null,
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -156,7 +159,16 @@ export async function apiRequest<T>(
   });
 
   const text = await response.text();
-  const payload: unknown = text ? JSON.parse(text) : null;
+  // A proxy error page, a platform 413 or a truncated body is not JSON. That
+  // must surface as a readable ApiError, not a raw SyntaxError in the UI.
+  let payload: unknown = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = null;
+    }
+  }
 
   if (!response.ok) {
     const parsed = apiErrorSchema.safeParse(payload);
@@ -166,6 +178,7 @@ export async function apiRequest<T>(
         parsed.data.error.message,
         response.status,
         parsed.data.error.request_id,
+        parsed.data.error.details,
       );
     }
     throw new ApiError(

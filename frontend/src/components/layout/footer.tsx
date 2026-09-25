@@ -27,12 +27,12 @@ export function Footer({ salonName }: { salonName: string }) {
             <ul className="flex flex-wrap gap-2">
               {POLICY_LINKS.map((link) => (
                 <li key={link.href}>
-                  <a
+                  <Link
                     href={link.href}
                     className="clay-btn-soft text-ink-soft hover:text-ink inline-flex min-h-11 items-center px-4 text-sm font-semibold"
                   >
                     {link.label}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -41,9 +41,9 @@ export function Footer({ salonName }: { salonName: string }) {
         <p className="text-ink-muted mt-8 text-xs">
           © {new Date().getFullYear()} {salonName}. Daily promotional capacity and
           campaign rules apply.{" "}
-          <a href="/credits" className="hover:text-ink underline">
+          <Link href="/credits" className="hover:text-ink underline">
             Photo credits
-          </a>
+          </Link>
           {" · "}
           {/* Where a customer returns to see whether the salon has confirmed
               their UPI payment. */}

@@ -90,6 +90,9 @@ class Payment(UUIDTimestampedModel):
     reference = models.CharField(max_length=64)
 
     submitted_at = models.DateTimeField()
+    # Where the claim came from. Caps how many unverified claims one network
+    # can hold at once: each one holds a draw place until the owner decides.
+    client_ip = models.GenericIPAddressField(null=True, blank=True)
     decided_at = models.DateTimeField(null=True, blank=True)
     decided_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

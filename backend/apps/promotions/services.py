@@ -45,6 +45,15 @@ class CampaignNotConfigured(DomainError):
     message = "The daily campaign has not been configured yet."
 
 
+def salon_local_date(salon: Salon, moment: dt.datetime) -> dt.date:
+    """The salon-local calendar date of ``moment`` (see salon_today)."""
+    try:
+        tz = ZoneInfo(salon.timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = dt.UTC
+    return moment.astimezone(tz).date()
+
+
 def salon_today(salon: Salon) -> dt.date:
     """Today's date in the salon's timezone, not the server's.
 
@@ -375,12 +384,23 @@ def decide_lucky(order: Order, *, now: dt.datetime | None = None) -> LuckyDecisi
     if not order.enters_lucky_campaign:
         return None
 
-    reservation = SlotReservation.objects.select_for_update().filter(order=order).first()
-    if reservation is None:
+    campaign_id = (
+        SlotReservation.objects.filter(order=order)
+        .values_list("daily_campaign_id", flat=True)
+        .first()
+    )
+    if campaign_id is None:
         _skip_draw(order, LuckySkipReason.HOLD_EXPIRED)
         return None
 
-    campaign = DailyCampaign.objects.select_for_update().get(pk=reservation.daily_campaign_id)
+    # Campaign first, then the reservation: the same order close_campaign and
+    # reserve_slot take them in. The reverse order deadlocked against the
+    # nightly rollover when an owner confirmed a claim at that moment.
+    campaign = DailyCampaign.objects.select_for_update().get(pk=campaign_id)
+    reservation = SlotReservation.objects.select_for_update().filter(order=order).first()
+    if reservation is None or reservation.daily_campaign_id != campaign.pk:
+        _skip_draw(order, LuckySkipReason.HOLD_EXPIRED)
+        return None
 
     # A day's draw takes entries only on that day. The nightly close can run up
     # to an hour late on Vercel Hobby, so the date is checked as well as the
@@ -479,23 +499,39 @@ def close_campaign(campaign: DailyCampaign) -> DailyCampaign:
     return locked
 
 
+def live_hold_count(campaign: DailyCampaign, now: dt.datetime | None = None) -> int:
+    """Holds that still count against capacity, exactly as reserve_slot counts
+    them: ACTIVE and not yet past their expiry."""
+    return SlotReservation.objects.filter(
+        daily_campaign=campaign,
+        status=ReservationStatus.ACTIVE,
+        expires_at__gt=now or timezone.now(),
+    ).count()
+
+
 def public_progress(campaign: DailyCampaign) -> dict:
     """The only campaign numbers safe to expose.
 
     Doc 1 section 16 lists what must never appear here: future winning
     positions, the seed, customer identities, payment ids, fraud signals. This
     function is the allowlist -- add nothing to it without checking that list.
+
+    ``slots_remaining`` uses the admission arithmetic of reserve_slot --
+    capacity minus paid entries minus live holds. Counting paid entries alone
+    showed slots as free while customers' unconfirmed UPI claims had already
+    taken them, so a new customer could pay into a draw that would refuse them.
     """
+    remaining = max(campaign.capacity - campaign.paid_count - live_hold_count(campaign), 0)
     return {
         "campaign_date": campaign.campaign_date.isoformat(),
         "capacity": campaign.capacity,
         "paid_count": campaign.paid_count,
-        "slots_remaining": campaign.slots_remaining,
+        "slots_remaining": remaining,
         "lucky_count": campaign.lucky_count,
         "winners_found": campaign.winner_count,
         "winners_remaining": campaign.winners_remaining,
         "discount_percent": campaign.discount_percent,
         "min_distinct_services": campaign.min_distinct_services,
-        "is_open": campaign.status == CampaignStatus.ACTIVE and campaign.slots_remaining > 0,
+        "is_open": campaign.status == CampaignStatus.ACTIVE and remaining > 0,
         "status": campaign.status,
     }

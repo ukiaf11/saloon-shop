@@ -16,12 +16,15 @@ import {
   okSchema,
   ownerPaymentListSchema,
   ownerPaymentSchema,
+  ownerServiceListSchema,
+  ownerServiceSchema,
   ownerRefundListSchema,
   ownerRefundSchema,
   paymentSettingsSchema,
   sessionSchema,
   type OwnerPayment,
   type OwnerRefund,
+  type OwnerService,
   type PaymentSettings,
 } from "@/types/owner";
 
@@ -80,7 +83,7 @@ export class SessionEnded extends Error {
 }
 
 type Options = {
-  method?: "GET" | "POST" | "PUT";
+  method?: "GET" | "POST" | "PUT" | "PATCH";
   body?: unknown;
 };
 
@@ -161,19 +164,29 @@ export const listPayments = async (
   (await ownerCall(token, `/owner/payments?status=${status}`, ownerPaymentListSchema))
     .results;
 
-export const confirmPayment = (token: string, id: string): Promise<OwnerPayment> =>
+/**
+ * `reference` is the UPI reference the owner checked. The server refuses the
+ * decision if the customer has changed it since this list loaded.
+ */
+export const confirmPayment = (
+  token: string,
+  id: string,
+  reference: string,
+): Promise<OwnerPayment> =>
   ownerCall(token, `/owner/payments/${id}/confirm`, ownerPaymentSchema, {
     method: "POST",
+    body: { reference },
   });
 
 export const rejectPayment = (
   token: string,
   id: string,
+  reference: string,
   reason: string,
 ): Promise<OwnerPayment> =>
   ownerCall(token, `/owner/payments/${id}/reject`, ownerPaymentSchema, {
     method: "POST",
-    body: { reason },
+    body: { reference, reason },
   });
 
 export const listRefunds = async (
@@ -192,4 +205,30 @@ export const markRefundSent = (
   ownerCall(token, `/owner/refunds/${id}/mark-sent`, ownerRefundSchema, {
     method: "POST",
     body: { method, reference },
+  });
+
+export const listOwnerServices = async (token: string): Promise<OwnerService[]> =>
+  (await ownerCall(token, "/owner/services", ownerServiceListSchema)).results;
+
+export const changeServicePrice = (
+  token: string,
+  id: string,
+  pricePaise: number,
+  reason: string,
+): Promise<OwnerService> =>
+  ownerCall(token, `/owner/services/${id}/price`, ownerServiceSchema, {
+    method: "POST",
+    body: { price_paise: pricePaise, ...(reason ? { reason } : {}) },
+  });
+
+export const updateOwnerService = (
+  token: string,
+  id: string,
+  patch: Partial<
+    Pick<OwnerService, "is_active" | "is_featured" | "duration_minutes" | "description">
+  >,
+): Promise<OwnerService> =>
+  ownerCall(token, `/owner/services/${id}`, ownerServiceSchema, {
+    method: "PATCH",
+    body: patch,
   });

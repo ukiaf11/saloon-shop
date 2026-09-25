@@ -26,6 +26,9 @@ class DomainError(Exception):
     code = "domain_error"
     http_status = status.HTTP_400_BAD_REQUEST
     message = "The request could not be completed."
+    # Context keys that may be returned to the client as error.details. Empty
+    # by default: context is for logs and often holds internal state.
+    public_context: tuple[str, ...] = ()
 
     def __init__(self, message: str | None = None, **context):
         self.message = message or self.message
@@ -99,16 +102,15 @@ def api_exception_handler(exc, context):
             "domain_error",
             extra={"code": exc.code, "detail": exc.message, **exc.context},
         )
-        return Response(
-            {
-                "error": {
-                    "code": exc.code,
-                    "message": exc.message,
-                    "request_id": get_request_id(),
-                }
-            },
-            status=exc.http_status,
-        )
+        error = {
+            "code": exc.code,
+            "message": exc.message,
+            "request_id": get_request_id(),
+        }
+        details = {k: exc.context[k] for k in exc.public_context if k in exc.context}
+        if details:
+            error["details"] = details
+        return Response({"error": error}, status=exc.http_status)
 
     if isinstance(exc, DjangoValidationError):
         return Response(

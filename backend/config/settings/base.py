@@ -214,6 +214,12 @@ CAMPAIGN_RESERVATION_TTL_SECONDS = env.int("CAMPAIGN_RESERVATION_TTL_SECONDS", d
 # held far longer than a gateway checkout's: long enough for the owner to check
 # their UPI app, and in practice ended by the nightly close of the day anyway.
 UPI_CLAIM_HOLD_SECONDS = env.int("UPI_CLAIM_HOLD_SECONDS", default=36 * 3600)
+# Unverified claims one network may have waiting at once. Each holds a draw
+# place, so without a cap one script could fill the day with fake references.
+UPI_CLAIM_MAX_PENDING_PER_IP = env.int("UPI_CLAIM_MAX_PENDING_PER_IP", default=3)
+# After the owner removes the QR, customers who were already mid-payment may
+# still send their reference for this long.
+UPI_CLAIM_GRACE_AFTER_QR_REMOVED_HOURS = 48
 
 # --- Owner panel sessions and login protection -------------------------------
 

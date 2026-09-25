@@ -8,12 +8,15 @@
 
 import type { ReactNode } from "react";
 
+import { Reveal } from "@/components/reveal";
+
 export function Section({
   id,
   title,
   eyebrow,
   description,
   align = "left",
+  revealChildren = true,
   children,
 }: {
   id: string;
@@ -22,6 +25,8 @@ export function Section({
   eyebrow?: string;
   description?: string;
   align?: "left" | "center";
+  /** Off when the children stagger their own reveals (cards, steps). */
+  revealChildren?: boolean;
   children: ReactNode;
 }) {
   const centered = align === "center";
@@ -34,7 +39,7 @@ export function Section({
       className="scroll-mt-28 px-4 py-10 sm:py-14"
     >
       <div className="mx-auto max-w-6xl">
-        <div className={centered ? "mx-auto max-w-2xl text-center" : "max-w-2xl"}>
+        <Reveal className={centered ? "mx-auto max-w-2xl text-center" : "max-w-2xl"}>
           {eyebrow ? (
             <p className="clay-sm text-primary inline-block px-4 py-1.5 text-xs font-bold tracking-[0.14em] uppercase">
               {eyebrow}
@@ -49,8 +54,14 @@ export function Section({
           {description ? (
             <p className="text-ink-soft mt-3 text-base sm:text-lg">{description}</p>
           ) : null}
-        </div>
-        <div className="mt-8 sm:mt-10">{children}</div>
+        </Reveal>
+        {revealChildren ? (
+          <Reveal delay={120} className="mt-8 sm:mt-10">
+            {children}
+          </Reveal>
+        ) : (
+          <div className="mt-8 sm:mt-10">{children}</div>
+        )}
       </div>
     </section>
   );

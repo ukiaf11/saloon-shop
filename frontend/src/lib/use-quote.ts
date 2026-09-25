@@ -31,6 +31,8 @@ export type QuoteState = {
   error: string | null;
   /** Machine-readable code, for branching. Never branch on the message. */
   errorCode: string | null;
+  /** Service ids the server no longer sells, when that is the error. */
+  unavailableIds: string[];
 };
 
 const EMPTY: QuoteState = {
@@ -38,6 +40,7 @@ const EMPTY: QuoteState = {
   loading: false,
   error: null,
   errorCode: null,
+  unavailableIds: [],
 };
 
 type Resolved = QuoteState & { key: string };
@@ -65,7 +68,14 @@ export function useQuote(lines: CartLine[]): QuoteState {
       fetchQuote(parsed, controller.signal)
         .then((quote) => {
           if (controller.signal.aborted) return;
-          setResolved({ key, quote, loading: false, error: null, errorCode: null });
+          setResolved({
+            key,
+            quote,
+            loading: false,
+            error: null,
+            errorCode: null,
+            unavailableIds: [],
+          });
         })
         .catch((err: unknown) => {
           if (controller.signal.aborted) return;
@@ -79,6 +89,13 @@ export function useQuote(lines: CartLine[]): QuoteState {
                 ? err.message
                 : "We could not price your selection. Please try again.",
             errorCode: err instanceof ApiError ? err.code : "request_failed",
+            unavailableIds:
+              err instanceof ApiError &&
+              Array.isArray(err.details?.unavailable_service_ids)
+                ? (err.details.unavailable_service_ids as unknown[]).filter(
+                    (id): id is string => typeof id === "string",
+                  )
+                : [],
           });
         });
     }, DEBOUNCE_MS);
@@ -94,7 +111,13 @@ export function useQuote(lines: CartLine[]): QuoteState {
   // Derived, not stored: a result for a different selection is by definition
   // not the current price, so the UI shows "pricing" instead of a wrong number.
   if (!resolved || resolved.key !== key) {
-    return { quote: null, loading: true, error: null, errorCode: null };
+    return {
+      quote: null,
+      loading: true,
+      error: null,
+      errorCode: null,
+      unavailableIds: [],
+    };
   }
   return resolved;
 }

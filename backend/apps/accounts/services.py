@@ -2,11 +2,15 @@
 
 Brute-force protection lives in the database, not the cache: the DRF throttle
 fails open when the cache is down (common/throttling.py), which is the right
-trade for public pages and the wrong one for a password form. Two limits apply:
+trade for public pages and the wrong one for a password form. Limits:
 
-* per account -- LOGIN_MAX_FAILURES consecutive failures lock it for
-  LOGIN_LOCKOUT_MINUTES, even against the right password;
-* per IP -- LOGIN_IP_MAX_FAILURES failures across any accounts in that window.
+* per (email, IP) -- LOGIN_MAX_FAILURES failures in LOGIN_LOCKOUT_MINUTES
+  refuse that email from that network, even with the right password. Keyed
+  by network so an attacker cannot lock the owner out of their own phone, and
+  counted for any email so the answer never reveals which accounts exist;
+* per IP -- LOGIN_IP_MAX_FAILURES failures across any accounts in that window;
+* re-authentication -- wrong passwords typed by someone already signed in
+  (payment QR changes, password change) lock the account itself.
 
 Transactions are explicit here (ATOMIC_REQUESTS is off), so a failure is
 counted in its own committed transaction before the error is raised; raising
@@ -102,6 +106,33 @@ def login(request, *, email: str, password: str) -> tuple[AdminSession, str]:
         logger.warning("login_ip_limited", extra={"ip": ip})
         raise TooManyAttempts()
 
+    # Per (email, IP), counted from the attempts table for ANY email: the
+    # answer is identical whether or not the account exists (no enumeration),
+    # and a stranger failing from their own network cannot lock the real owner
+    # out of theirs. An account-wide lock here would be a free denial of
+    # service against the one person who confirms payments.
+    # Failures since this pair's last success, like the "consecutive failures"
+    # of a classic lockout: signing in clears the slate.
+    since = _window_start()
+    last_success = (
+        LoginAttempt.objects.filter(email=email, ip_address=ip, success=True, created_at__gte=since)
+        .order_by("-created_at")
+        .values_list("created_at", flat=True)
+        .first()
+    )
+    if last_success is not None:
+        since = last_success
+    if (
+        LoginAttempt.objects.filter(
+            email=email, ip_address=ip, success=False, created_at__gt=since
+        ).count()
+        >= settings.LOGIN_MAX_FAILURES
+    ):
+        _record_attempt(email, request, success=False)
+        raise AccountLocked()
+
+    # Locked by repeated wrong passwords on a re-authenticated action (see
+    # register_reauth_failure) -- only reachable by someone who had a session.
     existing = AdminUser.objects.filter(email=email).first()
     if existing is not None and existing.is_locked:
         _record_attempt(email, request, success=False)
@@ -112,20 +143,7 @@ def login(request, *, email: str, password: str) -> tuple[AdminSession, str]:
     user = authenticate(request, email=email, password=password or "")
 
     if user is None:
-        with transaction.atomic():
-            _record_attempt(email, request, success=False)
-            if existing is not None:
-                locked = AdminUser.objects.select_for_update().get(pk=existing.pk)
-                locked.failed_login_count += 1
-                fields = ["failed_login_count", "updated_at"]
-                if locked.failed_login_count >= settings.LOGIN_MAX_FAILURES:
-                    locked.locked_until = timezone.now() + dt.timedelta(
-                        minutes=settings.LOGIN_LOCKOUT_MINUTES
-                    )
-                    locked.failed_login_count = 0
-                    fields.append("locked_until")
-                    logger.warning("admin_account_locked", extra={"user_id": str(locked.pk)})
-                locked.save(update_fields=fields)
+        _record_attempt(email, request, success=False)
         raise InvalidCredentials()
 
     raw = opaque_token()
@@ -168,6 +186,7 @@ def change_password(
     point -- whoever might have had the old password loses access now.
     """
     if not user.check_password(current_password or ""):
+        register_reauth_failure(user)
         raise ReauthFailed("Your current password is incorrect.")
     try:
         validate_password(new_password or "", user)
@@ -191,7 +210,34 @@ def change_password(
         )
 
 
+def register_reauth_failure(user: AdminUser) -> None:
+    """Count a wrong password typed by someone who is already signed in.
+
+    This is the one lockout that is safe to apply account-wide: only a holder
+    of a valid session can trigger it. At LOGIN_MAX_FAILURES the account locks,
+    which also ends every session (AdminTokenAuthentication refuses a locked
+    account) -- a stolen session cannot brute-force the password that guards
+    the payment QR. Committed in its own transaction so the caller's error
+    cannot roll the count back.
+    """
+    with transaction.atomic():
+        locked = AdminUser.objects.select_for_update().get(pk=user.pk)
+        locked.failed_login_count += 1
+        fields = ["failed_login_count", "updated_at"]
+        if locked.failed_login_count >= settings.LOGIN_MAX_FAILURES:
+            locked.locked_until = timezone.now() + dt.timedelta(
+                minutes=settings.LOGIN_LOCKOUT_MINUTES
+            )
+            locked.failed_login_count = 0
+            fields.append("locked_until")
+            logger.warning("admin_account_locked_reauth", extra={"user_id": str(locked.pk)})
+        locked.save(update_fields=fields)
+
+
 def confirm_password(user: AdminUser, password: str) -> None:
     """Re-authentication for actions that decide where customers' money goes."""
     if not user.check_password(password or ""):
+        register_reauth_failure(user)
         raise ReauthFailed()
+    if user.failed_login_count:
+        AdminUser.objects.filter(pk=user.pk).update(failed_login_count=0)

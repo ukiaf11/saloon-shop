@@ -17,6 +17,8 @@ from apps.payments.models import Payment, PaymentStatus
 from apps.promotions.services import salon_today
 from apps.salons.models import Salon
 from common.exceptions import NotFound, ValidationFailed
+from common.http import client_ip
+from common.throttling import ResilientScopedRateThrottle
 
 
 def _active_salon() -> Salon:
@@ -63,12 +65,20 @@ class PaymentOptionsView(APIView):
         return Response(serialize_options(_active_salon()))
 
 
+class _QrThrottleScope:
+    throttle_scope = "public_read"
+
+
 @require_GET
 def qr_image(request):
     """GET /payments/qr-image -- the salon's QR, re-encoded PNG bytes.
 
-    A plain view, not DRF: the API's renderers speak JSON only.
+    A plain view, not DRF: the API's renderers speak JSON only. Throttled like
+    every other public read -- otherwise a cache-busting ?v= loop reads the
+    image blob from the database on every request.
     """
+    if not ResilientScopedRateThrottle().allow_request(request, _QrThrottleScope()):
+        return HttpResponse(status=429)
     salon = Salon.objects.filter(status=Salon.Status.ACTIVE).first()
     row = services.get_settings(salon, with_image=True) if salon else None
     if row is None or not row.has_qr or not row.qr_image:
@@ -82,8 +92,9 @@ def qr_image(request):
     response["ETag"] = etag
     response["Content-Disposition"] = 'inline; filename="payment-qr.png"'
     if request.GET.get("v") == _qr_version(row):
-        # Versioned URL: the bytes behind it can never change.
-        response["Cache-Control"] = "public, max-age=31536000, immutable"
+        # Versioned URL: the bytes behind it can never change. s-maxage lets
+        # Vercel's CDN answer repeat loads without waking the function.
+        response["Cache-Control"] = "public, max-age=31536000, s-maxage=31536000, immutable"
     else:
         response["Cache-Control"] = "public, max-age=60"
     return response
@@ -106,7 +117,9 @@ class UpiClaimView(APIView):
     def post(self, request, order_id):
         data = _ClaimSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        services.submit_upi_claim(order_id, data.validated_data["reference"])
+        services.submit_upi_claim(
+            order_id, data.validated_data["reference"], client_ip=client_ip(request)
+        )
         return Response(serialize_order(order_for_display(order_id)))
 
 
@@ -263,14 +276,27 @@ def _decided(payment_id, salon) -> dict:
     return serialize_owner_payment(payment, salon_today(salon))
 
 
+class _DecisionSerializer(serializers.Serializer):
+    # The reference the owner checked in their UPI app. Required: a decision
+    # without it could land on a reference the customer swapped in since.
+    reference = serializers.CharField(max_length=40)
+
+
 class OwnerConfirmPaymentView(OwnerView):
     def post(self, request, payment_id):
         salon = _active_salon()
-        services.confirm_upi_payment(payment_id, actor=request.user, request=request)
+        data = _DecisionSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        services.confirm_upi_payment(
+            payment_id,
+            actor=request.user,
+            expected_reference=data.validated_data["reference"],
+            request=request,
+        )
         return Response(_decided(payment_id, salon))
 
 
-class _RejectSerializer(serializers.Serializer):
+class _RejectSerializer(_DecisionSerializer):
     reason = serializers.CharField(max_length=200, required=False, allow_blank=True)
 
 
@@ -283,6 +309,7 @@ class OwnerRejectPaymentView(OwnerView):
             payment_id,
             actor=request.user,
             reason=data.validated_data.get("reason", ""),
+            expected_reference=data.validated_data["reference"],
             request=request,
         )
         return Response(_decided(payment_id, salon))

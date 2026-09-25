@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from apps.catalog.models import Service
 from apps.orders.models import Order
 
 pytestmark = [pytest.mark.django_db, pytest.mark.urls("apps.orders.tests.urls")]
@@ -221,3 +222,18 @@ def test_detail_404s_for_an_unknown_id(client, config):
     r = client.get(f"/orders/{uuid.uuid4()}")
     assert r.status_code == 404
     assert body(r)["error"]["code"] == "not_found"
+
+
+def test_a_retired_service_is_named_so_a_saved_cart_can_drop_it(client, config, haircut, shaving):
+    """A browser's saved cart can hold a service the owner has since hidden.
+    The error must say which one, or the customer can never check out."""
+    Service.objects.filter(pk=shaving.pk).update(is_active=False)
+    r = post(
+        client,
+        "/orders/quote",
+        {"items": [{"service_id": str(haircut.id)}, {"service_id": str(shaving.id)}]},
+    )
+    assert r.status_code == 400
+    error = body(r)["error"]
+    assert error["code"] == "service_unavailable_for_order"
+    assert error["details"] == {"unavailable_service_ids": [str(shaving.id)]}

@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 // Imported rather than referenced by path. A string src like
 // "/images/x.webp" is NOT prefixed with basePath when images are unoptimized,
@@ -33,12 +34,12 @@ export function CtaBand() {
             <p className="mt-4 max-w-md text-base text-white/90 sm:text-lg">
               Book two or more services, save 10%, and take today&apos;s next slot.
             </p>
-            <a
-              href="#services"
+            <Link
+              href="/#services"
               className="clay-btn mt-8 inline-block px-8 py-4 text-base font-bold"
             >
               Book now
-            </a>
+            </Link>
           </div>
           <p className="absolute right-3 bottom-3 rounded-full bg-black/55 px-2.5 py-1 text-xs font-semibold text-white">
             Photo: Nenad Stojkovic · CC BY 2.0

@@ -36,8 +36,14 @@ def post(client, path, auth, payload=None):
     )
 
 
-def confirm(client, auth, payment):
-    return post(client, f"/api/v1/owner/payments/{payment.id}/confirm", auth)
+def confirm(client, auth, payment, reference=None):
+    """Confirm as the panel does: naming the reference the owner checked."""
+    if reference is None:
+        payment.refresh_from_db()
+        reference = payment.reference
+    return post(
+        client, f"/api/v1/owner/payments/{payment.id}/confirm", auth, {"reference": reference}
+    )
 
 
 def claimed(client, salon, services, phone):
@@ -154,7 +160,7 @@ def test_rejecting_frees_the_hold_and_blocks_confirmation(
         client,
         f"/api/v1/owner/payments/{payment.id}/reject",
         owner_auth,
-        {"reason": "No such payment in my account"},
+        {"reason": "No such payment in my account", "reference": payment.reference},
     )
     assert r.status_code == 200
     assert r.json()["status"] == "rejected"
@@ -361,3 +367,81 @@ def test_one_payment_confirmed_twice_at_once_counts_once(
     assert sum(1 for r in results if isinstance(r, PaymentAlreadyDecided)) == 4
     assert DailyCampaign.objects.get().paid_count == 1
     assert LuckyDecision.objects.count() == 1
+
+
+# --- regressions found by the bug hunt ----------------------------------------------
+
+
+def test_a_decision_about_a_reference_the_customer_since_changed_is_refused(
+    client, salon, campaign, qr_on_file, owner_auth, haircut
+):
+    """One UPI transfer must not back two orders. The owner checked reference X;
+    the customer then swapped it for Y (freeing X for another order). Confirming
+    must fail rather than approve Y on the strength of X."""
+    order, payment = claimed(client, salon, [haircut], "9000000001")
+    checked = payment.reference
+    assert claim(client, order, "999988887777").status_code == 200  # swapped
+
+    r = confirm(client, owner_auth, payment, reference=checked)
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "payment_changed"
+    payment.refresh_from_db()
+    assert payment.status == PaymentStatus.AWAITING_CONFIRMATION
+
+    # With the current reference the decision goes through.
+    assert confirm(client, owner_auth, payment).status_code == 200
+
+
+def test_a_decision_must_name_the_reference(
+    client, salon, campaign, qr_on_file, owner_auth, haircut
+):
+    _, payment = claimed(client, salon, [haircut], "9000000001")
+    r = post(client, f"/api/v1/owner/payments/{payment.id}/confirm", owner_auth, {})
+    assert r.status_code == 400
+
+
+def test_a_repeat_entry_is_re_checked_when_the_first_claim_was_rejected(
+    client, salon, campaign, qr_on_file, owner_auth, haircut
+):
+    """Same phone, two orders: B is skipped because A holds the day's entry. The
+    owner rejects A (no money). Confirming B's real payment must now enter B."""
+    set_winning_positions(campaign, [40])
+    _, payment_a = claimed(client, salon, [haircut], "9000000001")
+    order_b, payment_b = claimed(client, salon, [haircut], "9000000001")
+    order_b.refresh_from_db()
+    assert order_b.lucky_skip_reason == LuckySkipReason.REPEAT_ENTRY
+
+    post(
+        client,
+        f"/api/v1/owner/payments/{payment_a.id}/reject",
+        owner_auth,
+        {"reference": payment_a.reference},
+    )
+    r = confirm(client, owner_auth, payment_b)
+    assert r.status_code == 200
+    assert r.json()["draw"]["status"] == "not_won"
+    assert r.json()["draw"]["participant_number"] == 1
+
+
+def test_a_repeat_entry_stays_skipped_while_the_first_claim_still_holds(
+    client, salon, campaign, qr_on_file, owner_auth, haircut
+):
+    claimed(client, salon, [haircut], "9000000001")
+    _, payment_b = claimed(client, salon, [haircut], "9000000001")
+    r = confirm(client, owner_auth, payment_b)
+    assert r.json()["draw"]["reason"] == LuckySkipReason.REPEAT_ENTRY
+
+
+def test_public_slots_left_counts_places_held_by_unconfirmed_claims(
+    client, salon, campaign, qr_on_file, haircut
+):
+    """The homepage must not show a free slot that an unconfirmed claim holds:
+    a customer would pay into a draw that then refuses them."""
+    DailyCampaign.objects.filter(pk=campaign.pk).update(capacity=2, lucky_count=1)
+    claimed(client, salon, [haircut], "9000000001")
+    claimed(client, salon, [haircut], "9000000002")
+
+    today = client.get("/api/v1/promotion/today").json()
+    assert today["paid_count"] == 0
+    assert today["slots_remaining"] == 0
+    assert today["is_open"] is False

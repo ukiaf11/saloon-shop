@@ -3,7 +3,7 @@
 > Working memory for this project. Read this first at the start of a session; update it at the end of one.
 > Keep it short and current — it is a state file, not a log archive. Details live in the docs it points to.
 
-**Last updated:** 2026-09-22 (Phase 4 complete; live on Vercel; **UPI QR payment fallback + owner panel**)
+**Last updated:** 2026-09-25 (live on Vercel; UPI QR fallback; **owner price management, bug-hunt fixes, motion + imagery**)
 
 ---
 
@@ -30,7 +30,7 @@ The hard requirement underneath all of it: **every money and promotion decision 
 | **Engineering blockers** | None until Phase 4 (needs the wording decision) and Phase 5 (needs Razorpay keys). |
 | **Business track** | Owner to approve "5 Lucky Slots"; promotion/refund rules need drafting for legal. |
 
-**Verified working:** `docker compose` Postgres + Redis, migrations, all three seed commands, `/healthz` + `/api/v1/readiness`, Celery round-trip, JSON log redaction, CORS allowlist, image upload validation (rejects disguised non-images and SVG), the six public read endpoints against the contract, the public page rendering real seeded data with full JSON-LD, the Next image optimizer on API-served media. **403 tests pass** (322 backend, 81 frontend); ruff + eslint + tsc + prettier + `check --deploy` all clean.
+**Verified working:** `docker compose` Postgres + Redis, migrations, all three seed commands, `/healthz` + `/api/v1/readiness`, Celery round-trip, JSON log redaction, CORS allowlist, image upload validation (rejects disguised non-images and SVG), the six public read endpoints against the contract, the public page rendering real seeded data with full JSON-LD, the Next image optimizer on API-served media. **455 tests pass** (358 backend, 97 frontend); ruff + eslint + tsc + prettier + `check --deploy` all clean.
 
 **Not yet measured:** Lighthouse mobile score (Phase 2 exit gate names it; needs a real device/CI run).
 
@@ -645,3 +645,73 @@ by design.
 **Not done (still Phase 6+):** QR coupons (winners show their order number
 instead), notifications, MFA for the owner (the panel says so and suggests a
 long password), and staff roles other than OWNER.
+
+## 18. Price management, bug-hunt fixes, motion (2026-09-25)
+
+**Price management.** User asked for "personalized price setting" for the admin.
+That was read as the owner setting their own price per service, not per-customer
+pricing. The **Services & prices** tab is at `/admin` for OWNER and MANAGER
+(the RBAC matrix gives price changes to both; a manager sees only this tab and
+Account). The endpoints are in `API_CONTRACT_OWNER_CATALOG.md`. Every change
+goes through `change_service_price`, which writes a `ServicePriceHistory` row
+and an audit row and invalidates the public cache. `PATCH` refuses to carry a
+price. Rupee input becomes paise digit by digit (`rupeesToPaise`), never
+through a float.
+
+**Bug hunt.** A workflow ran 4 finders and adversarially verified each
+finding: 18 confirmed, 0 refuted. All of them are fixed:
+- Public `slots_remaining`/`is_open` now subtract live holds, the same
+  arithmetic as admission. Customers could otherwise pay into a draw already
+  full of unconfirmed claims.
+- `decide_lucky` locks the campaign before the reservation, the same order as
+  `close_campaign`. The old order could deadlock a confirmation during the
+  nightly rollover.
+- `REPEAT_ENTRY`/`DAY_FULL` skips are re-checked at confirmation (same day
+  only).
+- Confirm and reject must name the UTR the owner checked, returning
+  `409 payment_changed` if the customer swapped it. Without that, one transfer
+  could back two orders.
+- At most 3 pending claims per IP, DB-backed (`Payment.client_ip`). One script
+  could otherwise hold the whole day with fake UTRs.
+- Claims stay accepted for 48 h after the QR is removed, for orders placed
+  before the removal, so customers mid-payment are not stranded.
+- Login lockout is per (email, IP) and counted for any email. The per-account
+  lock was a free DoS against the owner and leaked account existence through
+  423. Wrong passwords on re-auth (QR form, password change) count toward a
+  real account lock, which also ends sessions.
+- The QR image endpoint is throttled and sends `s-maxage` for Vercel's CDN.
+- Stale cart: an error for a retired service now names the service ids
+  (`error.details`, opt-in via `DomainError.public_context`), and the tray offers
+  "Remove unavailable". Before this, a hidden service left in a saved cart
+  blocked checkout forever.
+- The owner panel keeps the session on transient `/auth/me` failures and offers
+  a retry. Only a 401 signs the owner out.
+- `apiRequest` survives non-JSON error bodies.
+- The checkout retries payment options and no longer claims "online payment is
+  not live" on a fetch failure. The dialog has a real focus trap.
+- Navbar, footer and CTA links use `next/link` with `/#…` hashes, so they work
+  on `/order` and under the Pages base path. The logo goes to `/`.
+- How-it-works and the hero badge no longer advertise a card partner when
+  payment is unavailable.
+
+**Motion and imagery.**
+- `components/reveal.tsx` plus CSS in `globals.css`. Hiding only applies under
+  `html.reveal-armed`, which JS adds, so without JS, or with reduced motion,
+  nothing is ever hidden. This was verified in a browser: with JS disabled,
+  with reduced motion emulated, and at every scroll stop.
+- A pure-CSS hero entrance, `clay-lift` hover (hover-capable pointers only),
+  and the `CraftBand` marquee of photos and clay art, which pauses on hover and
+  is `aria-hidden`.
+- New CC BY 2.0 photo `beard-shave.webp`, by the same photographer as the
+  existing set. It appears in the services banner and the band, and is
+  credited in `credits.json`.
+- The Commons search API rate-limits hard (429). Paginating one query by author
+  works; Openverse had nothing usable for men's grooming.
+- Vitest aliases static image imports to `src/test/static-image-stub.ts`.
+  Otherwise `placeholder="blur"` throws in tests. The regex must match the
+  whole specifier (`/^.*\.(webp|…)$/`).
+- Headless Chrome cannot emulate `(hover: hover)`, so hover styles were checked
+  by finding the rule in the shipped CSS. Chrome style rules expose an empty
+  `cssRules` list, so a stylesheet walker must test `selectorText` before
+  recursing.
+

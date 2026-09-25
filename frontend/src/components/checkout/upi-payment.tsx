@@ -96,21 +96,10 @@ export function UpiPaymentPanel({
     );
   }
 
-  if (!upi) {
-    // The owner switched the QR off after this order was placed.
-    return (
-      <div>
-        <h2 id={headingId} className="font-display text-ink text-3xl">
-          Pay at the salon
-        </h2>
-        <p className="text-ink-soft mt-3">
-          UPI QR payment is not available right now. Please show your order number{" "}
-          <OrderNumber order={order} /> at the salon.
-        </p>
-      </div>
-    );
-  }
-
+  // With no QR on offer (the owner switched it off after this order was
+  // placed) PayStep still takes a reference: a customer who was mid-payment
+  // must be able to record money they already sent. The server decides
+  // whether it is still accepted.
   return (
     <PayStep
       order={order}
@@ -145,7 +134,7 @@ function PayStep({
   onSubmitted,
 }: {
   order: Order;
-  upi: UpiOptions;
+  upi: UpiOptions | null;
   headingId: string;
   correcting: boolean;
   onCancelCorrect: () => void;
@@ -158,8 +147,8 @@ function PayStep({
   const [saveNote, setSaveNote] = useState<string | null>(null);
 
   const amount = formatInr(order.total_paise);
-  const qrUrl = qrImageUrl(upi.qr_image_version);
-  const payLink = upi.upi_id
+  const qrUrl = upi ? qrImageUrl(upi.qr_image_version) : "";
+  const payLink = upi?.upi_id
     ? upiPayLink({
         upiId: upi.upi_id,
         payeeName: upi.payee_name,
@@ -217,8 +206,23 @@ function PayStep({
         Booking {order.public_order_number}
       </p>
       <h2 id={headingId} className="font-display text-ink mt-1 text-3xl">
-        {correcting ? "Correct your reference" : `Pay ${amount} by UPI`}
+        {correcting
+          ? "Correct your reference"
+          : upi
+            ? `Pay ${amount} by UPI`
+            : "Pay at the salon"}
       </h2>
+
+      {!upi && !correcting ? (
+        <p className="text-ink-soft mt-3">
+          UPI QR payment is not available right now — please pay{" "}
+          <strong className="text-ink">{amount}</strong> at the salon and show your order
+          number <OrderNumber order={order} />.{" "}
+          <span className="text-ink font-semibold">
+            Already paid by UPI? Enter the reference below so the salon can match it.
+          </span>
+        </p>
+      ) : null}
 
       {rejected && !correcting ? (
         <p
@@ -231,7 +235,7 @@ function PayStep({
         </p>
       ) : null}
 
-      {!correcting ? (
+      {upi && !correcting ? (
         <>
           <ol className="text-ink-soft mt-4 space-y-2 text-sm leading-relaxed">
             <li>

@@ -23,7 +23,11 @@ import { DiscountReveal } from "./discount-reveal";
 
 export function SelectionCart() {
   const cart = useCart();
-  const { quote, loading, error } = useQuote(cart.lines);
+  const { quote, loading, error, errorCode, unavailableIds } = useQuote(cart.lines);
+  // A saved cart can hold a service the salon has since stopped offering. Its
+  // card no longer renders, so without this the customer could never remove it
+  // -- and the whole basket would stay unpriceable forever.
+  const stale = errorCode === "service_unavailable_for_order";
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   // BOOKING_ENABLED guards a stale cart too: a visitor can still hold items in
@@ -57,9 +61,29 @@ export function SelectionCart() {
 
                 <div className="mt-1 min-h-6">
                   {error ? (
-                    <p className="text-danger text-sm font-semibold" role="alert">
-                      {error}
-                    </p>
+                    <div
+                      role="alert"
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1"
+                    >
+                      <p className="text-danger text-sm font-semibold">{error}</p>
+                      {stale ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (unavailableIds.length > 0) {
+                              unavailableIds.forEach((id) => cart.remove(id));
+                            } else {
+                              cart.clear();
+                            }
+                          }}
+                          className="text-primary hover:text-primary-hover min-h-11 text-sm font-bold underline underline-offset-4"
+                        >
+                          {unavailableIds.length > 0
+                            ? "Remove unavailable"
+                            : "Clear selection"}
+                        </button>
+                      ) : null}
+                    </div>
                   ) : quote ? (
                     <DiscountReveal
                       eligible={quote.eligible_for_discount}

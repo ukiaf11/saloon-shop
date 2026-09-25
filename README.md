@@ -101,12 +101,14 @@ builds.
 | `/api/v1/owner/payment-settings` | Owner: QR image, UPI ID, name (password re-entered on every change) |
 | `/api/v1/owner/payments` · `…/{id}/confirm` · `…/{id}/reject` | Owner: check claims; confirming marks paid and decides the draw |
 | `/api/v1/owner/refunds` · `…/{id}/mark-sent` | Owner: winners' refunds, sent by UPI or cash and recorded here |
+| `GET /api/v1/owner/services` · `POST …/{id}/price` · `PATCH …/{id}` | Owner/manager: set prices (audited history), hide/show, mark popular, duration |
 
 Photo credits: [`/credits`](<frontend/src/app/(site)/credits/page.tsx>), generated from `frontend/src/assets/photos/credits.json`.
 
 Response shapes are fixed by [API_CONTRACT_PHASE2.md](API_CONTRACT_PHASE2.md),
-[API_CONTRACT_PHASE3.md](API_CONTRACT_PHASE3.md) and
-[API_CONTRACT_UPI_QR.md](API_CONTRACT_UPI_QR.md); the backend serializers and the
+[API_CONTRACT_PHASE3.md](API_CONTRACT_PHASE3.md),
+[API_CONTRACT_UPI_QR.md](API_CONTRACT_UPI_QR.md) and
+[API_CONTRACT_OWNER_CATALOG.md](API_CONTRACT_OWNER_CATALOG.md); the backend serializers and the
 frontend Zod schemas both answer to them.
 
 ## Taking payments before a gateway exists (UPI QR)

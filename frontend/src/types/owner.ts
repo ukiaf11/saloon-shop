@@ -100,3 +100,31 @@ export type OwnerRefund = z.infer<typeof ownerRefundSchema>;
 export const ownerRefundListSchema = z.object({ results: z.array(ownerRefundSchema) });
 
 export const okSchema = z.record(z.string(), z.unknown());
+
+/** A price change as the management list shows it. */
+export const priceHistoryEntrySchema = z.object({
+  old_price_paise: z.number().int().nonnegative(),
+  new_price_paise: z.number().int().nonnegative(),
+  changed_at: z.string().nullable(),
+  changed_by: z.string().nullable(),
+  reason: z.string().nullable(),
+});
+
+export const ownerServiceSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  slug: z.string(),
+  description: z.string(),
+  category: z.object({ id: z.uuid(), name: z.string() }).nullable(),
+  price_paise: z.number().int().nonnegative(),
+  duration_minutes: z.number().int().positive(),
+  is_active: z.boolean(),
+  is_featured: z.boolean(),
+  display_order: z.number().int().nonnegative(),
+  image_url: z.string().nullable(),
+  updated_at: z.string().nullable(),
+  price_history: z.array(priceHistoryEntrySchema),
+});
+export type OwnerService = z.infer<typeof ownerServiceSchema>;
+
+export const ownerServiceListSchema = z.object({ results: z.array(ownerServiceSchema) });

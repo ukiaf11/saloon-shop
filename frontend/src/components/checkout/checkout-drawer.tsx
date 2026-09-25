@@ -24,6 +24,7 @@ import { useCart } from "@/lib/cart";
 import { formatInr } from "@/lib/money";
 import { createOrder, newIdempotencyKey } from "@/lib/orders";
 import { fetchPaymentOptions, rememberOrder } from "@/lib/payments";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 import type { Order, PaymentOptions, Quote } from "@/types/api";
 
 import { UpiPaymentPanel } from "./upi-payment";
@@ -48,6 +49,22 @@ const checkoutSchema = z.object({
 
 type CheckoutValues = z.infer<typeof checkoutSchema>;
 
+/**
+ * Payment options, retried once. A failure here must never be read as "online
+ * payment is not live": the order exists, and the customer may be one retry
+ * away from the salon's QR.
+ */
+async function loadOptionsWithRetry(): Promise<PaymentOptions | null> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await fetchPaymentOptions();
+    } catch {
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 800));
+    }
+  }
+  return null;
+}
+
 export function CheckoutDrawer({
   onClose,
   quote,
@@ -62,6 +79,8 @@ export function CheckoutDrawer({
   const [options, setOptions] = useState<PaymentOptions | null | undefined>(undefined);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef);
 
   // Generated once per mount, and the parent mounts this component once per
   // checkout attempt. Reusing it across retries is what stops a
@@ -110,11 +129,7 @@ export function CheckoutDrawer({
       rememberOrder({ id: order.id, number: order.public_order_number });
       cart.clear();
       reset();
-      try {
-        setOptions(await fetchPaymentOptions());
-      } catch {
-        setOptions(null);
-      }
+      setOptions(await loadOptionsWithRetry());
     } catch (err) {
       setSubmitError(
         err instanceof Error
@@ -147,6 +162,7 @@ export function CheckoutDrawer({
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 40, opacity: 0 }}
         transition={{ duration: 0.2 }}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="checkout-title"
@@ -160,6 +176,39 @@ export function CheckoutDrawer({
           >
             Preparing payment…
           </p>
+        ) : placed && options === null ? (
+          <div>
+            <h2 id="checkout-title" className="font-display text-ink text-3xl">
+              Booking saved
+            </h2>
+            <p className="text-ink-soft mt-3">
+              Your order number is{" "}
+              <span className="bg-lucky-soft text-ink rounded-lg px-2 py-0.5 font-extrabold">
+                {placed.public_order_number}
+              </span>
+              . We couldn&apos;t load the payment options just now — your booking is safe,
+              and you can pay from your booking page.
+            </p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => {
+                  setOptions(undefined);
+                  void loadOptionsWithRetry().then(setOptions);
+                }}
+                className="clay-btn flex-1 px-6 py-3 text-sm font-bold"
+              >
+                Try again
+              </button>
+              <Link
+                href={`/order?id=${encodeURIComponent(placed.id)}`}
+                onClick={onClose}
+                className="clay-btn-soft flex-1 px-6 py-3 text-center text-sm font-bold"
+              >
+                Open booking page
+              </Link>
+            </div>
+          </div>
         ) : placed &&
           (options?.method === "upi_qr" || placed.payment.status !== "not_started") ? (
           <div>

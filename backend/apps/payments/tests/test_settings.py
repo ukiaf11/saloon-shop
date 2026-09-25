@@ -187,9 +187,26 @@ def test_the_qr_image_is_served_with_caching(client, salon, qr_on_file):
 
     version = client.get("/api/v1/payments/options").json()["upi_qr"]["qr_image_version"]
     versioned = client.get(f"/api/v1/payments/qr-image?v={version}")
-    assert versioned["Cache-Control"] == "public, max-age=31536000, immutable"
+    assert versioned["Cache-Control"] == "public, max-age=31536000, s-maxage=31536000, immutable"
     assert Image.open(io.BytesIO(versioned.content)).format == "PNG"
 
 
 def test_no_qr_means_no_image(client, salon):
     assert client.get("/api/v1/payments/qr-image").status_code == 404
+
+
+def test_the_qr_image_is_rate_limited_like_other_public_reads(client, salon, qr_on_file):
+    from unittest import mock
+
+    with mock.patch(
+        "common.throttling.ResilientScopedRateThrottle.allow_request", return_value=False
+    ):
+        assert client.get("/api/v1/payments/qr-image?v=bust").status_code == 429
+
+
+def test_wrong_passwords_on_the_qr_form_lock_a_stolen_session_out(client, salon, owner, owner_auth):
+    for _ in range(5):
+        assert put(client, owner_auth, upi_id="x@okaxis", password="guess").status_code == 403
+    owner.refresh_from_db()
+    assert owner.is_locked
+    assert client.get(URL, **owner_auth).status_code == 401

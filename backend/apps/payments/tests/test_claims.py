@@ -195,3 +195,62 @@ def test_a_paid_order_cannot_be_claimed_again(client, salon, config, qr_on_file,
     r = claim(client, order, fresh_reference())
     assert r.status_code == 409
     assert r.json()["error"]["code"] == "order_not_payable"
+
+
+# --- regressions found by the bug hunt ----------------------------------------------
+
+
+def test_one_network_cannot_hold_the_day_with_fake_claims(
+    client, salon, config, qr_on_file, haircut, settings
+):
+    """Each claim holds a draw place for up to 36 h with no evidence behind it.
+    A cap per network stops one script filling the day with fake references."""
+    settings.UPI_CLAIM_MAX_PENDING_PER_IP = 3
+    for i in range(3):
+        order = place_order(salon, [haircut], phone=f"900000001{i}")
+        assert claim(client, order).status_code == 200
+
+    fourth = place_order(salon, [haircut], phone="9000000019")
+    r = claim(client, fourth)
+    assert r.status_code == 429
+    assert r.json()["error"]["code"] == "too_many_pending_claims"
+    assert Order.objects.get(pk=fourth.pk).status == OrderStatus.DRAFT
+
+
+def test_a_customer_mid_payment_can_still_send_their_reference_after_the_qr_is_removed(
+    client, salon, config, qr_on_file, haircut, owner
+):
+    from apps.payments.services import update_payment_settings
+
+    from .conftest import OWNER_PASSWORD
+
+    order = place_order(salon, [haircut])  # placed while the QR was live
+    update_payment_settings(salon, actor=owner, password=OWNER_PASSWORD, remove_qr=True)
+
+    assert claim(client, order).status_code == 200
+
+
+def test_an_order_placed_after_the_qr_was_removed_cannot_claim(
+    client, salon, config, qr_on_file, haircut, owner
+):
+    from apps.payments.services import update_payment_settings
+
+    from .conftest import OWNER_PASSWORD
+
+    update_payment_settings(salon, actor=owner, password=OWNER_PASSWORD, remove_qr=True)
+    order = place_order(salon, [haircut])
+    r = claim(client, order)
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "upi_unavailable"
+
+
+def test_the_grace_period_ends(client, salon, config, qr_on_file, haircut, owner):
+    from apps.payments.models import PaymentSettings
+    from apps.payments.services import update_payment_settings
+
+    from .conftest import OWNER_PASSWORD
+
+    order = place_order(salon, [haircut])
+    update_payment_settings(salon, actor=owner, password=OWNER_PASSWORD, remove_qr=True)
+    PaymentSettings.objects.update(qr_updated_at=timezone.now() - dt.timedelta(hours=49))
+    assert claim(client, order).status_code == 409

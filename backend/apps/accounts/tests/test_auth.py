@@ -74,16 +74,37 @@ def test_wrong_password_and_unknown_email_get_the_same_answer(client, owner):
     assert wrong.json()["error"]["message"] == unknown.json()["error"]["message"]
 
 
-def test_five_failures_lock_the_account_even_against_the_right_password(client, owner):
+def test_five_failures_lock_that_network_even_against_the_right_password(client, owner):
     for _ in range(5):
         assert login(client, owner.email, "wrong").status_code == 401
-
-    owner.refresh_from_db()
-    assert owner.is_locked
 
     locked = login(client, owner.email, PASSWORD)
     assert locked.status_code == 423
     assert locked.json()["error"]["code"] == "account_locked"
+
+
+def test_a_stranger_cannot_lock_the_owner_out_of_their_own_network(client, owner, settings):
+    """The lock is per (email, network). An attacker failing from their own
+    connection must not stop the owner signing in from the salon's."""
+    settings.TRUST_X_REAL_IP = True
+    for _ in range(6):
+        login(client, owner.email, "wrong", HTTP_X_REAL_IP="203.0.113.66")
+
+    assert login(client, owner.email, PASSWORD, HTTP_X_REAL_IP="198.51.100.7").status_code == 200
+    owner.refresh_from_db()
+    assert not owner.is_locked
+
+
+def test_the_lock_answer_does_not_reveal_whether_an_account_exists(client, owner):
+    # One address per email keeps the per-IP request throttle out of the way.
+    addresses = {owner.email: "10.0.0.1", "nobody@test.example": "10.0.0.2"}
+    for email, address in addresses.items():
+        for _ in range(5):
+            login(client, email, "wrong", REMOTE_ADDR=address)
+    real = login(client, owner.email, "wrong", REMOTE_ADDR="10.0.0.1")
+    fake = login(client, "nobody@test.example", "wrong", REMOTE_ADDR="10.0.0.2")
+    assert real.status_code == fake.status_code == 423
+    assert real.json()["error"]["message"] == fake.json()["error"]["message"]
 
 
 def test_the_lock_lifts_when_it_expires(client, owner):
@@ -100,9 +121,8 @@ def test_a_success_resets_the_failure_count(client, owner):
         login(client, owner.email, "wrong")
     assert login(client, owner.email, PASSWORD).status_code == 200
     for _ in range(4):
-        login(client, owner.email, "wrong")
-    owner.refresh_from_db()
-    assert not owner.is_locked
+        assert login(client, owner.email, "wrong").status_code == 401
+    assert login(client, owner.email, PASSWORD).status_code == 200
 
 
 def test_many_failures_from_one_ip_block_that_ip(client, owner, settings):
@@ -193,6 +213,18 @@ def test_password_change_checks_the_current_password(client, owner):
     assert client.get("/api/v1/auth/me", **bearer(token)).status_code == 200
     owner.refresh_from_db()
     assert owner.check_password(PASSWORD)
+
+
+def test_repeated_wrong_reauth_passwords_lock_the_account_and_end_the_session(client, owner):
+    """A stolen session must not be able to brute-force the password that
+    guards the payment QR."""
+    token = login(client, owner.email, PASSWORD).json()["token"]
+    for _ in range(5):
+        _change(client, token, "guess", "a different long passphrase 7")
+
+    owner.refresh_from_db()
+    assert owner.is_locked
+    assert client.get("/api/v1/auth/me", **bearer(token)).status_code == 401
 
 
 def test_password_change_rejects_a_weak_password(client, owner):

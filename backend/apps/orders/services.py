@@ -37,6 +37,9 @@ QUOTE_TTL_SECONDS = 300
 class ServiceUnavailable(ValidationFailed):
     code = "service_unavailable_for_order"
     message = "One or more selected services are no longer available."
+    # Safe to return: the client sent these ids itself. Without them a browser
+    # holding a retired service in its saved cart cannot tell which line to drop.
+    public_context = ("unavailable_service_ids",)
 
 
 @dataclass(frozen=True)
@@ -131,7 +134,7 @@ def _load_services(salon: Salon, items: list[RequestedItem]) -> dict[str, Servic
 
     missing = [i for i in ids if i not in found]
     if missing:
-        raise ServiceUnavailable(context={"unavailable_service_ids": missing})
+        raise ServiceUnavailable(unavailable_service_ids=missing)
     return found
 
 

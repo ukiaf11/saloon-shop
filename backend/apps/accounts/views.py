@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 
 from apps.accounts import services
 from apps.accounts.authentication import AdminTokenAuthentication
-from apps.accounts.permissions import IsOwner, IsSignedIn
+from apps.accounts.permissions import IsOwner, IsOwnerOrManager, IsSignedIn
 
 
 def _iso(value) -> str | None:
@@ -29,6 +29,12 @@ class SignedInView(APIView):
     authentication_classes = (AdminTokenAuthentication,)
     permission_classes = (IsSignedIn,)
     throttle_scope = "owner"
+
+
+class ManagerView(SignedInView):
+    """Owner or manager: catalogue and content management."""
+
+    permission_classes = (IsOwnerOrManager,)
 
 
 class OwnerView(SignedInView):

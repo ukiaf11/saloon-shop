@@ -15,6 +15,7 @@ import { useState } from "react";
 
 import { AddToCart } from "@/components/cart/add-to-cart";
 import { ServiceArt, tileFor } from "@/components/clay/clay-art";
+import { Reveal } from "@/components/reveal";
 import { formatInr } from "@/lib/money";
 import type { Service, ServiceCategory } from "@/types/api";
 
@@ -36,7 +37,13 @@ export function formatDuration(minutes: number): string {
 
 function ServiceCard({ service, index }: { service: Service; index: number }) {
   return (
-    <li className="clay flex gap-4 p-3 sm:flex-col sm:gap-0">
+    // Stagger within the row, not down the whole list, so the last card of a
+    // long menu is not still waiting when the customer reaches it.
+    <Reveal
+      as="li"
+      delay={(index % 4) * 90}
+      className="clay clay-lift flex gap-4 p-3 sm:flex-col sm:gap-0"
+    >
       <div
         className={`${tileFor(index)} relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] sm:aspect-16/11 sm:h-auto sm:w-full sm:rounded-[1.5rem]`}
       >
@@ -50,12 +57,16 @@ function ServiceCard({ service, index }: { service: Service; index: number }) {
             width={800}
             height={550}
             sizes={CARD_SIZES}
-            className="h-full w-full object-cover"
+            className="lift-media h-full w-full object-cover"
           />
         ) : (
           <>
-            <ServiceArt slug={service.slug} size={72} className="sm:hidden" />
-            <ServiceArt slug={service.slug} size={112} className="hidden sm:block" />
+            <span className="lift-media sm:hidden">
+              <ServiceArt slug={service.slug} size={72} />
+            </span>
+            <span className="lift-media hidden sm:block">
+              <ServiceArt slug={service.slug} size={112} />
+            </span>
           </>
         )}
         {service.is_featured ? (
@@ -105,7 +116,7 @@ function ServiceCard({ service, index }: { service: Service; index: number }) {
           <AddToCart serviceId={service.id} serviceName={service.name} />
         </div>
       </div>
-    </li>
+    </Reveal>
   );
 }
 

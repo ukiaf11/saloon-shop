@@ -30,10 +30,11 @@ import { AccountPanel } from "./account-panel";
 import { PaymentCard } from "./payment-card";
 import { QrSettingsPanel } from "./qr-settings";
 import { RefundsPanel } from "./refunds-panel";
+import { ServicesPanel } from "./services-panel";
 import { Field, inputClass, Notice } from "./ui";
 
 type Session = { token: string; user: OwnerUser };
-type Tab = "confirm" | "refunds" | "history" | "qr" | "account";
+type Tab = "confirm" | "refunds" | "history" | "services" | "qr" | "account";
 
 const REFRESH_MS = 30_000;
 
@@ -46,6 +47,12 @@ export function OwnerApp() {
   // new token is never shown with a previous session's user.
   const [known, setKnown] = useState<Session | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // A network blip or a cold server is not a signed-out owner. Keyed by the
+  // attempt so "Try again" re-runs the check without clearing the token.
+  const [meFailure, setMeFailure] = useState<{ attempt: number; message: string } | null>(
+    null,
+  );
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!token || known?.token === token) return;
@@ -54,14 +61,18 @@ export function OwnerApp() {
       .then(({ user }) => {
         if (!cancelled) setKnown({ token, user });
       })
-      .catch(() => {
-        // Expired or revoked while the tab was closed: back to sign-in.
-        if (!cancelled) clearToken();
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        // SessionEnded has already cleared the token: back to sign-in. Any
+        // other failure keeps the token and offers a retry.
+        if (!(err instanceof SessionEnded)) {
+          setMeFailure({ attempt, message: errorMessage(err) });
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [token, known]);
+  }, [token, known, attempt]);
 
   const onSessionEnded = useCallback(() => {
     clearToken();
@@ -83,6 +94,21 @@ export function OwnerApp() {
   }
 
   if (known?.token !== token) {
+    if (meFailure?.attempt === attempt) {
+      return (
+        <div className="clay mx-auto max-w-md space-y-4 p-6 text-center sm:p-8">
+          <p className="text-ink font-bold">We couldn&apos;t reach the server.</p>
+          <p className="text-ink-soft text-sm">{meFailure.message}</p>
+          <button
+            type="button"
+            onClick={() => setAttempt((n) => n + 1)}
+            className="clay-btn px-6 py-3 text-sm font-bold"
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
     return <p className="text-ink-soft py-16 text-center">Loading…</p>;
   }
 
@@ -94,13 +120,15 @@ export function OwnerApp() {
     setNotice("You have signed out.");
   };
 
-  if (session.user.role !== "OWNER") {
+  // The RBAC matrix (REQUIREMENTS.md section 5): payments are owner-only,
+  // the catalogue is owner-or-manager, receptionists have no screen here yet.
+  if (session.user.role === "RECEPTIONIST") {
     return (
       <div className="clay mx-auto max-w-md p-6 text-center sm:p-8">
-        <h1 className="font-display text-ink text-2xl">Owner only</h1>
+        <h1 className="font-display text-ink text-2xl">No access yet</h1>
         <p className="text-ink-soft mt-3">
-          Payments are confirmed by the salon owner. This account can&apos;t use this page
-          yet.
+          This page is for the salon owner and manager. The receptionist tools (coupon
+          scanning) arrive in a later phase.
         </p>
         <button
           type="button"
@@ -205,7 +233,9 @@ function Dashboard({
   onSignOut: () => void;
 }) {
   const { token, user } = session;
-  const [tab, setTab] = useState<Tab>("confirm");
+  // A manager never sees -- and never requests -- the money screens.
+  const isOwner = user.role === "OWNER";
+  const [tab, setTab] = useState<Tab>(isOwner ? "confirm" : "services");
   const [awaiting, setAwaiting] = useState<OwnerPayment[] | null>(null);
   const [refunds, setRefunds] = useState<OwnerRefund[] | null>(null);
   const [recentlyDecided, setRecentlyDecided] = useState<OwnerPayment[]>([]);
@@ -216,6 +246,7 @@ function Dashboard({
   const refresh = useCallback(() => setReloads((n) => n + 1), []);
 
   useEffect(() => {
+    if (!isOwner) return;
     let cancelled = false;
     Promise.all([listPayments(token, "awaiting"), listRefunds(token, "pending")])
       .then(([nextAwaiting, nextRefunds]) => {
@@ -232,11 +263,12 @@ function Dashboard({
     return () => {
       cancelled = true;
     };
-  }, [token, reloads, onSessionEnded]);
+  }, [token, reloads, isOwner, onSessionEnded]);
 
   // New claims arrive while the owner has the page open; keep the queue fresh
   // without them having to reload, but only while they are looking at it.
   useEffect(() => {
+    if (!isOwner) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") refresh();
     }, REFRESH_MS);
@@ -248,13 +280,18 @@ function Dashboard({
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [refresh]);
+  }, [refresh, isOwner]);
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: "confirm", label: "To confirm", count: awaiting?.length },
-    { id: "refunds", label: "Refunds", count: refunds?.length },
-    { id: "history", label: "History" },
-    { id: "qr", label: "Payment QR" },
+    ...(isOwner
+      ? ([
+          { id: "confirm", label: "To confirm", count: awaiting?.length },
+          { id: "refunds", label: "Refunds", count: refunds?.length },
+          { id: "history", label: "History" },
+        ] as const)
+      : []),
+    { id: "services", label: "Services & prices" },
+    ...(isOwner ? ([{ id: "qr", label: "Payment QR" }] as const) : []),
     { id: "account", label: "Account" },
   ];
 
@@ -265,15 +302,17 @@ function Dashboard({
           <p className="text-ink-muted text-xs font-extrabold tracking-[0.12em] uppercase">
             Signed in as {user.full_name || user.email}
           </p>
-          <h1 className="font-display text-ink mt-1 text-3xl sm:text-4xl">Payments</h1>
+          <h1 className="font-display text-ink mt-1 text-3xl sm:text-4xl">Salon admin</h1>
         </div>
-        <button
-          type="button"
-          onClick={refresh}
-          className="clay-btn-soft min-h-11 px-5 text-sm font-bold"
-        >
-          Refresh
-        </button>
+        {isOwner ? (
+          <button
+            type="button"
+            onClick={refresh}
+            className="clay-btn-soft min-h-11 px-5 text-sm font-bold"
+          >
+            Refresh
+          </button>
+        ) : null}
       </div>
 
       <div
@@ -288,7 +327,16 @@ function Dashboard({
               key={item.id}
               type="button"
               aria-pressed={pressed}
-              onClick={() => setTab(item.id)}
+              onClick={(event) => {
+                setTab(item.id);
+                // On a phone the strip scrolls sideways; keep the chosen tab
+                // in view rather than half off the edge.
+                event.currentTarget.scrollIntoView({
+                  block: "nearest",
+                  inline: "center",
+                  behavior: "smooth",
+                });
+              }}
               className={`min-h-11 shrink-0 px-5 text-sm font-bold whitespace-nowrap ${
                 pressed ? "clay-btn" : "clay-btn-soft text-ink-soft"
               }`}
@@ -361,6 +409,10 @@ function Dashboard({
 
       {tab === "history" ? (
         <History token={token} onSessionEnded={onSessionEnded} />
+      ) : null}
+
+      {tab === "services" ? (
+        <ServicesPanel token={token} onSessionEnded={onSessionEnded} />
       ) : null}
 
       {tab === "qr" ? (
